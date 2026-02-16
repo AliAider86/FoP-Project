@@ -1,145 +1,16 @@
-#include <bits/stdc++.h>
+#include <iostream>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL2_gfx.h>
+#include "engine.h"
+#include "ui.h"
 
 using namespace std;
 
-struct Sprite
-{
-    double x, y;
-    int w, h;
-    bool visible;
-};
-
-Sprite player;
-
-struct Button
-{
-    int x, y, w, h;
-};
-
-Button runButton;
-Button pauseButton;
-
-int screenWidth;
-int screenHeight;
-bool isRunningCode = false;
-
-void handleEvents(bool &running)
-{
-    SDL_Event e;
-
-    while (SDL_PollEvent(&e))
-    {
-        if (e.type == SDL_QUIT)
-            running = false;
-
-        if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
-            running = false;
-
-        if (e.type == SDL_MOUSEBUTTONDOWN)
-        {
-            int mx = e.button.x;
-            int my = e.button.y;
-
-            if (mx >= runButton.x && mx <= runButton.x + runButton.w &&
-                my >= runButton.y && my <= runButton.y + runButton.h)
-                isRunningCode = true;
-
-            if (mx >= pauseButton.x && mx <= pauseButton.x + pauseButton.w &&
-                my >= pauseButton.y && my <= pauseButton.y + pauseButton.h)
-                isRunningCode = false;
-        }
-    }
-}
-
-void update()
-{
-    if (!isRunningCode)
-        return;
-
-    const double speed = 5.0;
-    const Uint8* keystate = SDL_GetKeyboardState(nullptr);
-
-    if (keystate[SDL_SCANCODE_UP])
-    {
-        if (player.y <= 0)
-            player.y = 0;
-        else
-            player.y -= speed;
-    }
-
-    if (keystate[SDL_SCANCODE_DOWN])
-    {
-        if (player.y >= screenHeight - player.h)
-            player.y = screenHeight - player.h;
-        else
-            player.y += speed;
-    }
-
-    if (keystate[SDL_SCANCODE_LEFT])
-    {
-        if (player.x <= 0)
-            player.x = 0;
-        else
-            player.x -= speed;
-    }
-
-    if (keystate[SDL_SCANCODE_RIGHT])
-    {
-        if (player.x >= screenWidth - player.w)
-            player.x = screenWidth - player.w;
-        else
-            player.x += speed;
-    }
-}
-
-void render(SDL_Renderer* renderer)
-{
-    int green, red;
-    if (isRunningCode)
-    {
-        green = 220;
-        red = 80;
-    }
-    else
-    {
-        green = 80;
-        red = 220;
-    }
-
-    SDL_Rect topBar = {0, 0, screenWidth, 40};
-
-    if (isRunningCode)
-        SDL_SetRenderDrawColor(renderer, 0, 180, 0, 255);
-    else
-        SDL_SetRenderDrawColor(renderer, 120, 120, 120, 255);
-
-    SDL_RenderFillRect(renderer, &topBar);
-
-    SDL_Rect r1 = {runButton.x, runButton.y, runButton.w, runButton.h};
-    SDL_SetRenderDrawColor(renderer, 0, green, 0, 255);
-    SDL_RenderFillRect(renderer, &r1);
-
-    SDL_Rect r2 = {pauseButton.x, pauseButton.y, pauseButton.w, pauseButton.h};
-    SDL_SetRenderDrawColor(renderer, red, 0, 0, 255);
-    SDL_RenderFillRect(renderer, &r2);
-
-    if (!player.visible) return;
-
-    SDL_Rect rect;
-    rect.x = (int)player.x;
-    rect.y = (int)player.y;
-    rect.w = player.w;
-    rect.h = player.h;
-
-    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-    SDL_RenderFillRect(renderer, &rect);
-}
-
 int main(int argc, char* argv[])
 {
+    GameState game;
+
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER) != 0)
     {
         cout << "SDL Init Error: " << SDL_GetError() << endl;
@@ -176,27 +47,30 @@ int main(int argc, char* argv[])
         return -1;
     }
 
-    player.w = 100;
-    player.h = 100;
-    player.x = double(dm.w) / 2 - 50;
-    player.y = double(dm.h) / 2 - 50;
-    player.visible = true;
-    screenWidth = dm.w;
-    screenHeight = dm.h;
-    runButton = {50, screenHeight - 100, 120, 50};
-    pauseButton = {200, screenHeight - 100, 120, 50};
+    game.player.w = 100;
+    game.player.h = 100;
+    game.player.x = double(dm.w) / 2 - 50;
+    game.player.y = double(dm.h) / 2 - 50;
+    game.player.visible = true;
+    game.screenWidth = dm.w;
+    game.screenHeight = dm.h;
+    game.runButton = {50, game.screenHeight - 100, 120, 50};
+    game.pauseButton = {200, game.screenHeight - 100, 120, 50};
+    game.stepButton = {350, game.screenHeight - 100, 120, 50};
+    game.program.push_back({REPEAT, 0, 3});
+    game.program.push_back({MOVE_RIGHT, 100, 0});
 
     bool running = true;
 
     while (running)
     {
-        handleEvents(running);
-        update();
+        handleEvents(running, game);
+        update(game);
 
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderClear(renderer);
 
-        render(renderer);
+        render(renderer, game);
 
         SDL_RenderPresent(renderer);
     }

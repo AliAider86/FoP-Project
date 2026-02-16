@@ -7,7 +7,11 @@ include_directories(C:/MinGW/include/SDL2)
 link_directories(C:/MinGW/lib)
 
 add_executable(FoP main.cpp
-        game.h)
+        blocks.h
+        engine.h
+        engine.cpp
+        ui.h
+        ui.cpp)
 
 target_link_libraries(FoP
         mingw32
