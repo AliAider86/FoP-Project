@@ -1,5 +1,6 @@
 #include "ui.h"
 #include <SDL2/SDL.h>
+#include <SDL2/SDL2_gfx.h>
 
 void handleEvents(bool &running, GameState& game)
 {
@@ -31,6 +32,23 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.stepMode = true;
                 game.isRunningCode = true;
+            }
+
+            if (mx >= game.resetButton.x &&
+                mx <= game.resetButton.x + game.resetButton.w &&
+                my >= game.resetButton.y &&
+                my <= game.resetButton.y + game.resetButton.h)
+            {
+                game.isRunningCode = false;
+                game.currentBlockIndex = 0;
+                game.isExecutingBlock = false;
+                game.remainingMove = 0;
+
+                game.repeatCountStack.clear();
+                game.repeatStartStack.clear();
+
+                game.player.x = game.screenWidth / 2 - game.player.w / 2;
+                game.player.y = game.screenHeight / 2 - game.player.h / 2;
             }
         }
     }
@@ -113,4 +131,18 @@ void render(SDL_Renderer* renderer, GameState& game)
 
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderFillRect(renderer, &rect);
+
+    boxRGBA(renderer,
+            game.resetButton.x + 3,
+            game.resetButton.y + 3,
+            game.resetButton.x + game.resetButton.w + 3,
+            game.resetButton.y + game.resetButton.h + 3,
+            90, 30, 30, 255);
+
+    boxRGBA(renderer,
+            game.resetButton.x,
+            game.resetButton.y,
+            game.resetButton.x + game.resetButton.w,
+            game.resetButton.y + game.resetButton.h,
+            139, 69, 19, 255);
 }

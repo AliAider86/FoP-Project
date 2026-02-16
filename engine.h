@@ -3,6 +3,9 @@
 
 #include <vector>
 #include "blocks.h"
+#include <SDL2/SDL.h>
+
+using namespace std;
 
 struct Button
 {
@@ -20,7 +23,7 @@ struct GameState
 {
     Sprite player;
 
-    std::vector<Block> program;
+    vector<Block> program;
 
     int currentBlockIndex = 0;
 
@@ -30,15 +33,22 @@ struct GameState
     double remainingMove = 0;
     bool isExecutingBlock = false;
 
-    int repeatRemaining = 0;
-    int repeatBlockIndex = -1;
-
     int screenWidth;
     int screenHeight;
 
     Button runButton;
     Button pauseButton;
     Button stepButton;
+
+    vector<int> repeatCountStack;
+    vector<int> repeatStartStack;
+
+    SDL_Rect resetButton;
+
+    Uint32 waitStartTime;
+    Uint32 waitDuration;
+    bool isWaiting;
+
 };
 
 void update(GameState& game);

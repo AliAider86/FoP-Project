@@ -7,13 +7,17 @@ enum BlockType
     MOVE_DOWN,
     MOVE_LEFT,
     MOVE_RIGHT,
-    REPEAT
+    REPEAT,
+    END_REPEAT,
+    FOREVER,
+    END_FOREVER,
+    WAIT
 };
 
 struct Block
 {
     BlockType type;
-    int value;
+    double value;
     int repeatCount;
 };
 

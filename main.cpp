@@ -1,7 +1,6 @@
 #include <iostream>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_image.h>
-#include <SDL2/SDL2_gfx.h>
 #include "engine.h"
 #include "ui.h"
 
@@ -57,8 +56,10 @@ int main(int argc, char* argv[])
     game.runButton = {50, game.screenHeight - 100, 120, 50};
     game.pauseButton = {200, game.screenHeight - 100, 120, 50};
     game.stepButton = {350, game.screenHeight - 100, 120, 50};
-    game.program.push_back({REPEAT, 0, 3});
-    game.program.push_back({MOVE_RIGHT, 100, 0});
+    game.resetButton = {500, game.screenHeight - 100, 120, 50};
+    game.program.push_back({FOREVER, 0, 0});
+    game.program.push_back({MOVE_RIGHT, 5, 0});
+    game.program.push_back({END_FOREVER, 0, 0});
 
     bool running = true;
 
