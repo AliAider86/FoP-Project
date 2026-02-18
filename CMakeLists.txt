@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.25)
 project(FoP)
+# به جای BUILD_SHARED_LIBS=OFF
+set(BUILD_SHARED_LIBS ON)
 
 set(CMAKE_CXX_STANDARD 17)
 
@@ -11,10 +13,16 @@ add_executable(FoP main.cpp
         engine.h
         engine.cpp
         ui.h
-        ui.cpp)
+        ui.cpp
+        value.h
+        operators.h
+        looks.h)
 
-target_link_libraries(FoP
-        mingw32
-        SDL2main
-        SDL2
+target_link_libraries(${PROJECT_NAME}
+        -lmingw32
+        -lSDL2main
+        -lSDL2_ttf      # اول SDL2_ttf
+        -lSDL2          # بعد SDL2
+        -lSDL2_image
+        -lSDL2_mixer
 )
