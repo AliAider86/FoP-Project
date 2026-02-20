@@ -104,7 +104,7 @@ int main(int argc, char* argv[])
     }
 
     // بارگذاری فونت
-    g_font = TTF_OpenFont("C:/Windows/Fonts/arial.ttf", 18);
+    g_font = TTF_OpenFont("arial.ttf", 18);
     if (!g_font)
     {
         cout << "Failed to load font: " << TTF_GetError() << endl;
