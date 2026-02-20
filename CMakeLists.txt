@@ -21,8 +21,8 @@ add_executable(FoP main.cpp
 target_link_libraries(${PROJECT_NAME}
         -lmingw32
         -lSDL2main
-        -lSDL2_ttf      # اول SDL2_ttf
-        -lSDL2          # بعد SDL2
+        -lSDL2
+        -lSDL2_ttf
         -lSDL2_image
         -lSDL2_mixer
 )

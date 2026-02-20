@@ -1,16 +1,21 @@
 #include "ui.h"
+#include "engine.h"
 #include <SDL2/SDL2_gfx.h>
 #include <string>
 #include <iostream>
+#include <cmath>
 
 using namespace std;
 
-// تابع برای کشیدن متن
+// تابع renderText در main.cpp تعریف شده
 
 void handleEvents(bool &running, GameState& game)
 {
-    SDL_Event e;
+    // reset pressedThisFrame
+    for (int i = 0; i < SDL_NUM_SCANCODES; i++)
+        game.pressedThisFrame[i] = 0;
 
+    SDL_Event e;
     while (SDL_PollEvent(&e))
     {
         if (e.type == SDL_QUIT)
@@ -19,10 +24,23 @@ void handleEvents(bool &running, GameState& game)
         if (e.type == SDL_KEYDOWN && e.key.keysym.sym == SDLK_ESCAPE)
             running = false;
 
-        // ===== تشخیص کلیدهای فشرده =====
-        if (e.type == SDL_KEYDOWN)
+        // تشخیص کلیدهای فشرده
+        if (e.type == SDL_KEYDOWN && !e.key.repeat)
         {
             game.pressedKeys[e.key.keysym.scancode] = 1;
+            game.pressedThisFrame[e.key.keysym.scancode] = 1;
+
+            if (e.key.keysym.scancode == SDL_SCANCODE_P)
+            {
+                game.player.penDown = true;
+                game.player.lastPenX = game.player.x + game.player.w / 2;
+                game.player.lastPenY = game.player.y + game.player.h / 2;
+                game.player.penMoved = true;
+            }
+            if (e.key.keysym.scancode == SDL_SCANCODE_O)
+            {
+                game.player.penDown = false;
+            }
         }
 
         if (e.type == SDL_KEYUP)
@@ -30,42 +48,194 @@ void handleEvents(bool &running, GameState& game)
             game.pressedKeys[e.key.keysym.scancode] = 0;
         }
 
-        // ===== تشخیص موقعیت ماوس =====
         if (e.type == SDL_MOUSEMOTION)
         {
             game.mouseX = e.motion.x;
             game.mouseY = e.motion.y;
         }
 
-        // ===== تشخیص کلیک ماوس =====
+        // ===== ویرایش با صفحه‌کلید =====
+        if (e.type == SDL_KEYDOWN)
+        {
+            // اول بررسی کن که آیا ویرایش مربوط به بلوک هست یا اسپرایت
+            bool blockEditing = false;
+
+            // بررسی ویرایش بلوک‌ها
+            for (int i = 0; i < game.program.size(); i++)
+            {
+                if (game.program[i].editingMode)
+                {
+                    blockEditing = true;
+                    Block& b = game.program[i];
+
+                    if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER)
+                    {
+                        // پایان ویرایش
+                        if (!b.editingBuffer.empty())
+                        {
+                            double newVal = stod(b.editingBuffer);
+                            if (b.editingField < b.parameters.size())
+                            {
+                                b.parameters[b.editingField] = Value(newVal);
+
+                                // برای SET_SIZE، مقدار را به int تبدیل کن
+                                if (b.type == SET_SIZE)
+                                {
+                                    int sizeVal = (int)newVal;
+                                    if (sizeVal < 1) sizeVal = 1;
+                                    b.parameters[b.editingField] = Value((double)sizeVal);
+                                }
+                            }
+                        }
+                        b.editingMode = false;
+                        b.editingField = -1;
+                        b.editingBuffer = "";
+                    }
+                    else if (e.key.keysym.sym == SDLK_ESCAPE)
+                    {
+                        b.editingMode = false;
+                        b.editingField = -1;
+                        b.editingBuffer = "";
+                    }
+                    else if (e.key.keysym.sym == SDLK_BACKSPACE && !b.editingBuffer.empty())
+                    {
+                        b.editingBuffer.pop_back();
+                    }
+                    else if (e.key.keysym.sym == SDLK_MINUS)
+                    {
+                        if (b.editingBuffer.empty() || b.editingBuffer[0] != '-')
+                            b.editingBuffer += '-';
+                    }
+                    else if (e.key.keysym.sym == SDLK_PERIOD)
+                    {
+                        // فقط یک نقطه مجازه
+                        if (b.editingBuffer.find('.') == string::npos)
+                            b.editingBuffer += '.';
+                    }
+                    else
+                    {
+                        char c = e.key.keysym.sym;
+                        if (c >= '0' && c <= '9')
+                        {
+                            b.editingBuffer += c;
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // اگه ویرایش مربوط به بلوک نبود، برو سراغ ویرایش اسپرایت
+            if (!blockEditing && game.editingMode && e.type == SDL_KEYDOWN)
+            {
+                if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER)
+                {
+                    // پایان ویرایش
+                    if (game.editingField == 0)  // نام
+                    {
+                        if (!game.editingBuffer.empty())
+                            game.player.message = game.editingBuffer;
+                    }
+                    else if (game.editingField == 1)  // x
+                    {
+                        game.player.x = stod(game.editingBuffer);
+                    }
+                    else if (game.editingField == 2)  // y
+                    {
+                        game.player.y = stod(game.editingBuffer);
+                    }
+                    else if (game.editingField == 3)  // size
+                    {
+                        int newSize = stoi(game.editingBuffer);
+                        game.player.w = newSize;
+                        game.player.h = newSize;
+                    }
+                    else if (game.editingField == 4)  // direction
+                    {
+                        game.player.direction = stod(game.editingBuffer);
+                    }
+
+                    game.editingMode = false;
+                    game.editingField = -1;
+                    game.editingBuffer = "";
+                }
+                else if (e.key.keysym.sym == SDLK_ESCAPE)
+                {
+                    game.editingMode = false;
+                    game.editingField = -1;
+                    game.editingBuffer = "";
+                }
+                else if (e.key.keysym.sym == SDLK_BACKSPACE && !game.editingBuffer.empty())
+                {
+                    game.editingBuffer.pop_back();
+                }
+                else if (e.key.keysym.sym == SDLK_MINUS)
+                {
+                    game.editingBuffer += '-';
+                }
+                else if (e.key.keysym.sym == SDLK_PERIOD)
+                {
+                    game.editingBuffer += '.';
+                }
+                else
+                {
+                    char c = e.key.keysym.sym;
+                    if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == ' ')
+                    {
+                        game.editingBuffer += c;
+                    }
+                }
+            }
+        }
+
         if (e.type == SDL_MOUSEBUTTONDOWN)
         {
             game.mousePressed = true;
             int mx = e.button.x;
             int my = e.button.y;
 
-            // چک کردن کلیک روی اسپرایت
             if (mx >= game.player.x && mx <= game.player.x + game.player.w &&
                 my >= game.player.y && my <= game.player.y + game.player.h)
             {
                 game.spriteClicked = true;
             }
 
-            // Reset all button press states
+            // ریست وضعیت دکمه‌ها
             game.runButton.isPressed = false;
             game.pauseButton.isPressed = false;
             game.stepButton.isPressed = false;
             game.resetButton.isPressed = false;
+            game.saveButton.isPressed = false;
+            game.loadButton.isPressed = false;
 
-            // دکمه Run
+            game.moveCategoryBtn.isPressed = false;
+            game.looksCategoryBtn.isPressed = false;
+            game.soundCategoryBtn.isPressed = false;
+            game.eventsCategoryBtn.isPressed = false;
+            game.controlCategoryBtn.isPressed = false;
+            game.sensingCategoryBtn.isPressed = false;
+            game.operatorsCategoryBtn.isPressed = false;
+            game.variablesCategoryBtn.isPressed = false;
+
+            // ===== دکمه‌های پایین صفحه =====
+            int buttonY = game.screenHeight - 80;
+            int buttonWidth = 100;
+            int buttonHeight = 40;
+            int buttonSpacing = 10;
+            int startX = (game.screenWidth - (6 * (buttonWidth + buttonSpacing))) / 2;
+
+            game.runButton = Button(startX, buttonY, buttonWidth, buttonHeight);
+            game.pauseButton = Button(startX + buttonWidth + buttonSpacing, buttonY, buttonWidth, buttonHeight);
+            game.stepButton = Button(startX + 2*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
+            game.resetButton = Button(startX + 3*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
+            game.saveButton = Button(startX + 4*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
+            game.loadButton = Button(startX + 5*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
+
             if (mx >= game.runButton.x && mx <= game.runButton.x + game.runButton.w &&
                 my >= game.runButton.y && my <= game.runButton.y + game.runButton.h)
             {
                 game.runButton.isPressed = true;
                 game.isRunningCode = true;
-                game.greenFlagPressed = true;  // پرچم سبز زده شد
-
-                // ریست کردن وضعیت اجرا
+                game.greenFlagPressed = true;
                 game.currentBlockIndex = 0;
                 game.isExecutingBlock = false;
                 game.remainingMove = 0;
@@ -73,10 +243,10 @@ void handleEvents(bool &running, GameState& game)
                 game.isShowingMessage = false;
                 game.repeatCountStack.clear();
                 game.repeatStartStack.clear();
-                game.player.message = "";
+                // game.player.message = "";  // این خط رو کامنت کردم تا اسم اسپرایت پاک نشه
             }
 
-            // دکمه Pause
+            // ===== دکمه Pause =====
             if (mx >= game.pauseButton.x && mx <= game.pauseButton.x + game.pauseButton.w &&
                 my >= game.pauseButton.y && my <= game.pauseButton.y + game.pauseButton.h)
             {
@@ -84,7 +254,7 @@ void handleEvents(bool &running, GameState& game)
                 game.isRunningCode = false;
             }
 
-            // دکمه Step
+            // ===== دکمه Step =====
             if (mx >= game.stepButton.x && mx <= game.stepButton.x + game.stepButton.w &&
                 my >= game.stepButton.y && my <= game.stepButton.y + game.stepButton.h)
             {
@@ -93,11 +263,9 @@ void handleEvents(bool &running, GameState& game)
                 game.isRunningCode = true;
             }
 
-            // دکمه Reset
-            if (mx >= game.resetButton.x &&
-                mx <= game.resetButton.x + game.resetButton.w &&
-                my >= game.resetButton.y &&
-                my <= game.resetButton.y + game.resetButton.h)
+            // ===== دکمه Reset =====
+            if (mx >= game.resetButton.x && mx <= game.resetButton.x + game.resetButton.w &&
+                my >= game.resetButton.y && my <= game.resetButton.y + game.resetButton.h)
             {
                 game.resetButton.isPressed = true;
                 game.isRunningCode = false;
@@ -106,14 +274,403 @@ void handleEvents(bool &running, GameState& game)
                 game.remainingMove = 0;
                 game.isWaiting = false;
                 game.isShowingMessage = false;
-
                 game.repeatCountStack.clear();
                 game.repeatStartStack.clear();
-
                 game.player.x = game.screenWidth / 2 - game.player.w / 2;
                 game.player.y = game.screenHeight / 2 - game.player.h / 2;
-                game.player.message = "";
+                // game.player.message = "";  // اسم اسپرایت رو پاک نکن
                 game.player.isThinking = false;
+                game.penX1.clear();
+                game.penY1.clear();
+                game.penX2.clear();
+                game.penY2.clear();
+                game.penR_.clear();
+                game.penG_.clear();
+                game.penB_.clear();
+                game.penSize_.clear();
+            }
+
+            // ===== دکمه Save =====
+            if (mx >= game.saveButton.x && mx <= game.saveButton.x + game.saveButton.w &&
+                my >= game.saveButton.y && my <= game.saveButton.y + game.saveButton.h)
+            {
+                game.saveButton.isPressed = true;
+                saveProject(game, "project.txt");
+            }
+
+            // ===== دکمه Load =====
+            if (mx >= game.loadButton.x && mx <= game.loadButton.x + game.loadButton.w &&
+                my >= game.loadButton.y && my <= game.loadButton.y + game.loadButton.h)
+            {
+                game.loadButton.isPressed = true;
+                loadProject(game, "project.txt");
+            }
+
+            // ===== دکمه‌های دسته‌بندی =====
+            int categoriesPanelWidth = 180;
+            if (mx >= game.moveCategoryBtn.x && mx <= game.moveCategoryBtn.x + game.moveCategoryBtn.w &&
+                my >= game.moveCategoryBtn.y && my <= game.moveCategoryBtn.y + game.moveCategoryBtn.h)
+            {
+                game.moveCategoryBtn.isPressed = true;
+                game.currentCategory = 0;
+                cout << "Move category selected" << endl;
+            }
+
+            if (mx >= game.looksCategoryBtn.x && mx <= game.looksCategoryBtn.x + game.looksCategoryBtn.w &&
+                my >= game.looksCategoryBtn.y && my <= game.looksCategoryBtn.y + game.looksCategoryBtn.h)
+            {
+                game.looksCategoryBtn.isPressed = true;
+                game.currentCategory = 1;
+                cout << "Looks category selected" << endl;
+            }
+
+            if (mx >= game.soundCategoryBtn.x && mx <= game.soundCategoryBtn.x + game.soundCategoryBtn.w &&
+                my >= game.soundCategoryBtn.y && my <= game.soundCategoryBtn.y + game.soundCategoryBtn.h)
+            {
+                game.soundCategoryBtn.isPressed = true;
+                game.currentCategory = 2;
+                cout << "Sound category selected" << endl;
+            }
+
+            if (mx >= game.eventsCategoryBtn.x && mx <= game.eventsCategoryBtn.x + game.eventsCategoryBtn.w &&
+                my >= game.eventsCategoryBtn.y && my <= game.eventsCategoryBtn.y + game.eventsCategoryBtn.h)
+            {
+                game.eventsCategoryBtn.isPressed = true;
+                game.currentCategory = 3;
+                cout << "Events category selected" << endl;
+            }
+
+            if (mx >= game.controlCategoryBtn.x && mx <= game.controlCategoryBtn.x + game.controlCategoryBtn.w &&
+                my >= game.controlCategoryBtn.y && my <= game.controlCategoryBtn.y + game.controlCategoryBtn.h)
+            {
+                game.controlCategoryBtn.isPressed = true;
+                game.currentCategory = 4;
+                cout << "Control category selected" << endl;
+            }
+
+            if (mx >= game.sensingCategoryBtn.x && mx <= game.sensingCategoryBtn.x + game.sensingCategoryBtn.w &&
+                my >= game.sensingCategoryBtn.y && my <= game.sensingCategoryBtn.y + game.sensingCategoryBtn.h)
+            {
+                game.sensingCategoryBtn.isPressed = true;
+                game.currentCategory = 5;
+                cout << "Sensing category selected" << endl;
+            }
+
+            if (mx >= game.operatorsCategoryBtn.x && mx <= game.operatorsCategoryBtn.x + game.operatorsCategoryBtn.w &&
+                my >= game.operatorsCategoryBtn.y && my <= game.operatorsCategoryBtn.y + game.operatorsCategoryBtn.h)
+            {
+                game.operatorsCategoryBtn.isPressed = true;
+                game.currentCategory = 6;
+                cout << "Operators category selected" << endl;
+            }
+
+            if (mx >= game.variablesCategoryBtn.x && mx <= game.variablesCategoryBtn.x + game.variablesCategoryBtn.w &&
+                my >= game.variablesCategoryBtn.y && my <= game.variablesCategoryBtn.y + game.variablesCategoryBtn.h)
+            {
+                game.variablesCategoryBtn.isPressed = true;
+                game.currentCategory = 7;
+                cout << "Variables category selected" << endl;
+            }
+
+            // ===== تشخیص کلیک روی بلوک‌های مثال =====
+            int examplesPanelX = categoriesPanelWidth + 30;
+            int examplesPanelWidth = 250;
+            int exampleBlockStartY = 110;
+            int blockCount = 0;
+
+            if (game.currentCategory == 0) blockCount = 10;
+            else if (game.currentCategory == 1) blockCount = 8;
+            else if (game.currentCategory == 2) blockCount = 5;
+            else if (game.currentCategory == 3) blockCount = 7;
+            else if (game.currentCategory == 4) blockCount = 8;
+            else if (game.currentCategory == 5) blockCount = 9;
+            else if (game.currentCategory == 6) blockCount = 8;
+            else if (game.currentCategory == 7) blockCount = 6;
+
+            for (int i = 0; i < blockCount; i++)
+            {
+                int blockY = exampleBlockStartY + i * 45;
+                SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+                if (mx >= blockRect.x && mx <= blockRect.x + blockRect.w &&
+                    my >= blockRect.y && my <= blockRect.y + blockRect.h)
+                {
+                    cout << "Example block " << i << " clicked in category " << game.currentCategory << endl;
+
+                    // ساختن بلوک جدید
+                    Block newBlock;
+                    string blockName;
+
+                    if (game.currentCategory == 0)  // حرکت
+                    {
+                        if (i == 0) { newBlock.type = MOVE_UP; blockName = "move 10 steps"; newBlock.parameters.push_back(Value(10.0)); }
+                        else if (i == 1) { newBlock.type = TURN_RIGHT; blockName = "turn 15 degrees"; newBlock.parameters.push_back(Value(15.0)); }
+                        else if (i == 2) { newBlock.type = TURN_LEFT; blockName = "turn -15 degrees"; newBlock.parameters.push_back(Value(-15.0)); }
+                        else if (i == 3) { newBlock.type = GOTO_XY; blockName = "go to x: y:"; newBlock.parameters.push_back(Value(100.0)); newBlock.parameters.push_back(Value(100.0)); }
+                        else if (i == 4) { newBlock.type = GOTO_MOUSE; blockName = "go to mouse-pointer"; }
+                        else if (i == 5) { newBlock.type = WAIT; blockName = "glide 1 secs"; newBlock.parameters.push_back(Value(1.0)); }
+                        else if (i == 6) { newBlock.type = CHANGE_X; blockName = "change x by 10"; newBlock.parameters.push_back(Value(10.0)); }
+                        else if (i == 7) { newBlock.type = SET_X; blockName = "set x to 0"; newBlock.parameters.push_back(Value(0.0)); }
+                        else if (i == 8) { newBlock.type = CHANGE_Y; blockName = "change y by 10"; newBlock.parameters.push_back(Value(10.0)); }
+                        else if (i == 9) { newBlock.type = SET_Y; blockName = "set y to 0"; newBlock.parameters.push_back(Value(0.0)); }
+                    }
+                    else if (game.currentCategory == 1)  // ظاهر
+                    {
+                        if (i == 0) { newBlock.type = SAY_FOR; blockName = "say Hello for 2 secs"; newBlock.parameters.push_back(Value(string("Hello!"))); newBlock.parameters.push_back(Value(2.0)); }
+                        else if (i == 1) { newBlock.type = SAY; blockName = "say Hello"; newBlock.parameters.push_back(Value(string("Hello!"))); }
+                        else if (i == 2) { newBlock.type = THINK_FOR; blockName = "think Hmm... for 2 secs"; newBlock.parameters.push_back(Value(string("Hmm..."))); newBlock.parameters.push_back(Value(2.0)); }
+                        else if (i == 3) { newBlock.type = THINK; blockName = "think Hmm..."; newBlock.parameters.push_back(Value(string("Hmm..."))); }
+                        else if (i == 4) { newBlock.type = SHOW; blockName = "show"; }
+                        else if (i == 5) { newBlock.type = HIDE; blockName = "hide"; }
+                        else if (i == 6) { newBlock.type = CHANGE_SIZE; blockName = "change size by 10"; newBlock.parameters.push_back(Value(10.0)); }
+                        else if (i == 7) { newBlock.type = SET_SIZE; blockName = "set size to 100 %"; newBlock.parameters.push_back(Value(100.0)); }
+                    }
+                    else if (game.currentCategory == 2)  // صدا
+                    {
+                        newBlock.type = WAIT;
+                        blockName = "sound block";
+                        newBlock.parameters.push_back(Value(1.0));
+                    }
+                    else if (game.currentCategory == 3)  // رویدادها
+                    {
+                        if (i == 0) { newBlock.type = WHEN_GREEN_FLAG; blockName = "when flag clicked"; }
+                        else if (i == 1)
+                        {
+                            newBlock.type = WHEN_KEY_PRESSED;
+                            newBlock.keyCode = SDL_SCANCODE_SPACE;
+                            blockName = "when key pressed";
+                        }
+                        else if (i == 2) { newBlock.type = WHEN_SPRITE_CLICKED; blockName = "when sprite clicked"; }
+                        else { newBlock.type = WAIT; blockName = "event block"; newBlock.parameters.push_back(Value(1.0)); }
+                    }
+                    else if (game.currentCategory == 4)  // کنترل
+                    {
+                        if (i == 0) { newBlock.type = WAIT; blockName = "wait 1 seconds"; newBlock.parameters.push_back(Value(1.0)); }
+                        else if (i == 1)
+                        {
+                            newBlock.type = REPEAT;
+                            newBlock.repeatCount = 10;
+                            blockName = "repeat 10";
+                        }
+                        else if (i == 2) { newBlock.type = FOREVER; blockName = "forever"; }
+                        else { newBlock.type = WAIT; blockName = "control block"; newBlock.parameters.push_back(Value(1.0)); }
+                    }
+                    else if (game.currentCategory == 5)  // حسگر
+                    {
+                        newBlock.type = WAIT;
+                        blockName = "sensing block";
+                        newBlock.parameters.push_back(Value(1.0));
+                    }
+                    else if (game.currentCategory == 6)  // عملگرها
+                    {
+                        if (i == 0) { newBlock.type = OP_ADD; blockName = "0 + 0"; newBlock.parameters.push_back(Value(10.0)); newBlock.parameters.push_back(Value(5.0)); }
+                        else if (i == 1) { newBlock.type = OP_SUBTRACT; blockName = "0 - 0"; newBlock.parameters.push_back(Value(10.0)); newBlock.parameters.push_back(Value(5.0)); }
+                        else if (i == 2) { newBlock.type = OP_MULTIPLY; blockName = "0 * 0"; newBlock.parameters.push_back(Value(10.0)); newBlock.parameters.push_back(Value(5.0)); }
+                        else if (i == 3) { newBlock.type = OP_DIVIDE; blockName = "0 / 0"; newBlock.parameters.push_back(Value(10.0)); newBlock.parameters.push_back(Value(5.0)); }
+                        else { newBlock.type = WAIT; blockName = "operator block"; newBlock.parameters.push_back(Value(1.0)); }
+                    }
+                    else if (game.currentCategory == 7)  // متغیرها
+                    {
+                        if (i == 0 || i == 1)
+                        {
+                            newBlock.type = SET_VARIABLE;
+                            newBlock.variableName = "my variable";
+                            blockName = "set variable to 0";
+                            newBlock.parameters.push_back(Value(0.0));
+                        }
+                        else { newBlock.type = WAIT; blockName = "variable block"; newBlock.parameters.push_back(Value(1.0)); }
+                    }
+
+                    // ذخیره نام بلوک برای نمایش
+                    newBlock.eventName = blockName;
+
+                    game.program.push_back(newBlock);
+                    cout << "Block added to program. Total blocks: " << game.program.size() << endl;
+                }
+            }
+
+            // ===== تشخیص کلیک روی بلوک‌های Code Area (برای ویرایش) =====
+            int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
+            int codeAreaWidth = 600;
+
+            for (int i = 0; i < game.program.size() && i < 20; i++)
+            {
+                int blockY = 100 + i * 45;
+                SDL_Rect blockRect = {codeAreaX + 10, blockY, codeAreaWidth - 20, 35};
+
+                // اگه روی بلوک کلیک شد
+                if (mx >= blockRect.x && mx <= blockRect.x + blockRect.w &&
+                    my >= blockRect.y && my <= blockRect.y + blockRect.h)
+                {
+                    Block& b = game.program[i];
+
+                    // غیرفعال کردن ویرایش قبلی
+                    for (int j = 0; j < game.program.size(); j++)
+                    {
+                        if (j != i)
+                        {
+                            game.program[j].editingMode = false;
+                            game.program[j].editingField = -1;
+                            game.program[j].editingBuffer = "";
+                        }
+                    }
+
+                    // مختصات کلیک رو نسبت به بلوک حساب کن
+                    int localX = mx - blockRect.x;
+                    int textStartX = 5;
+
+                    // تشخیص نوع بلوک و فیلد قابل ویرایش
+                    if (b.type == GOTO_XY && b.parameters.size() >= 2)
+                    {
+                        // پارامتر اول (x) در سمت چپ
+                        if (localX < 70)
+                        {
+                            b.editingMode = true;
+                            b.editingField = 0;
+                            char buffer[50];
+                            sprintf(buffer, "%.1f", b.parameters[0].asNumber());
+                            b.editingBuffer = buffer;
+                        }
+                            // پارامتر دوم (y) در سمت راست
+                        else if (localX > 100)
+                        {
+                            b.editingMode = true;
+                            b.editingField = 1;
+                            char buffer[50];
+                            sprintf(buffer, "%.1f", b.parameters[1].asNumber());
+                            b.editingBuffer = buffer;
+                        }
+                    }
+                    else if ((b.type == MOVE_UP || b.type == MOVE_DOWN ||
+                              b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
+                              b.type == TURN_RIGHT || b.type == TURN_LEFT ||
+                              b.type == CHANGE_X || b.type == CHANGE_Y ||
+                              b.type == SET_X || b.type == SET_Y ||
+                              b.type == CHANGE_SIZE || b.type == WAIT) &&
+                             !b.parameters.empty())
+                    {
+                        b.editingMode = true;
+                        b.editingField = 0;
+                        char buffer[50];
+                        sprintf(buffer, "%.1f", b.parameters[0].asNumber());
+                        b.editingBuffer = buffer;
+                    }
+                    else if (b.type == SET_SIZE && !b.parameters.empty())
+                    {
+                        b.editingMode = true;
+                        b.editingField = 0;
+                        char buffer[50];
+                        sprintf(buffer, "%d", (int)b.parameters[0].asNumber());
+                        b.editingBuffer = buffer;
+                    }
+                }
+            }
+
+            // ===== تشخیص کلیک روی مشخصات اسپرایت =====
+            int stagePanelX = codeAreaX + codeAreaWidth + 10;
+            int stagePanelWidth = game.screenWidth - stagePanelX - 5;
+            int stageWidth = stagePanelWidth - 20;
+            int stageHeight = 300;
+            SDL_Rect stage = {stagePanelX + 5, 70, stageWidth, stageHeight};
+
+            int spritePanelY = stage.y + stage.h + 10;
+            SDL_Rect spritePanel = {stagePanelX + 5, spritePanelY, stageWidth, 150};
+
+            int textX = spritePanel.x + 70;
+            int textY = spritePanel.y + 25;
+            int lineHeight = 20;
+
+            // کلیک روی اسم
+            SDL_Rect nameRect = {textX, textY, 150, 18};
+            if (mx >= nameRect.x && mx <= nameRect.x + nameRect.w &&
+                my >= nameRect.y && my <= nameRect.y + nameRect.h)
+            {
+                game.editingMode = true;
+                game.editingField = 0;
+                game.editingBuffer = game.player.message.empty() ? "Sprite1" : game.player.message;
+            }
+
+            // کلیک روی X
+            SDL_Rect xRect = {textX, textY + lineHeight, 100, 18};
+            if (mx >= xRect.x && mx <= xRect.x + xRect.w &&
+                my >= xRect.y && my <= xRect.y + xRect.h)
+            {
+                game.editingMode = true;
+                game.editingField = 1;
+                char buffer[50];
+                sprintf(buffer, "%.1f", game.player.x);
+                game.editingBuffer = buffer;
+            }
+
+            // کلیک روی Y
+            SDL_Rect yRect = {textX + 120, textY + lineHeight, 100, 18};
+            if (mx >= yRect.x && mx <= yRect.x + yRect.w &&
+                my >= yRect.y && my <= yRect.y + yRect.h)
+            {
+                game.editingMode = true;
+                game.editingField = 2;
+                char buffer[50];
+                sprintf(buffer, "%.1f", game.player.y);
+                game.editingBuffer = buffer;
+            }
+
+            // کلیک روی Size
+            SDL_Rect sizeRect = {textX, textY + lineHeight * 2, 100, 18};
+            if (mx >= sizeRect.x && mx <= sizeRect.x + sizeRect.w &&
+                my >= sizeRect.y && my <= sizeRect.y + sizeRect.h)
+            {
+                game.editingMode = true;
+                game.editingField = 3;
+                char buffer[50];
+                sprintf(buffer, "%d", game.player.w);
+                game.editingBuffer = buffer;
+            }
+
+            // کلیک روی Direction
+            SDL_Rect dirRect = {textX, textY + lineHeight * 3, 100, 18};
+            if (mx >= dirRect.x && mx <= dirRect.x + dirRect.w &&
+                my >= dirRect.y && my <= dirRect.y + dirRect.h)
+            {
+                game.editingMode = true;
+                game.editingField = 4;
+                char buffer[50];
+                sprintf(buffer, "%.1f", game.player.direction);
+                game.editingBuffer = buffer;
+            }
+
+            // کلیک روی Visible toggle
+            SDL_Rect visibleRect = {textX, textY + lineHeight * 4, 80, 18};
+            if (mx >= visibleRect.x && mx <= visibleRect.x + visibleRect.w &&
+                my >= visibleRect.y && my <= visibleRect.y + visibleRect.h)
+            {
+                game.player.visible = !game.player.visible;
+            }
+        }
+
+        // ===== تشخیص کلیک راست روی بلوک‌های Code Area =====
+        if (e.type == SDL_MOUSEBUTTONDOWN && e.button.button == SDL_BUTTON_RIGHT)
+        {
+            int mx = e.button.x;
+            int my = e.button.y;
+
+            int categoriesPanelWidth = 180;
+            int examplesPanelX = categoriesPanelWidth + 30;
+            int examplesPanelWidth = 250;
+            int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
+            int codeAreaWidth = 600;
+
+            for (int i = 0; i < game.program.size() && i < 20; i++)
+            {
+                int blockY = 100 + i * 45;
+                SDL_Rect blockRect = {codeAreaX + 10, blockY, codeAreaWidth - 20, 35};
+
+                if (mx >= blockRect.x && mx <= blockRect.x + blockRect.w &&
+                    my >= blockRect.y && my <= blockRect.y + blockRect.h)
+                {
+                    game.program.erase(game.program.begin() + i);
+                    cout << "Block " << i << " removed. Total blocks: " << game.program.size() << endl;
+                    break;
+                }
             }
         }
 
@@ -126,31 +683,60 @@ void handleEvents(bool &running, GameState& game)
             game.pauseButton.isPressed = false;
             game.stepButton.isPressed = false;
             game.resetButton.isPressed = false;
+            game.saveButton.isPressed = false;
+            game.loadButton.isPressed = false;
+            game.moveCategoryBtn.isPressed = false;
+            game.looksCategoryBtn.isPressed = false;
+            game.soundCategoryBtn.isPressed = false;
+            game.eventsCategoryBtn.isPressed = false;
+            game.controlCategoryBtn.isPressed = false;
+            game.sensingCategoryBtn.isPressed = false;
+            game.operatorsCategoryBtn.isPressed = false;
+            game.variablesCategoryBtn.isPressed = false;
         }
     }
 
-    // ===== حرکت مستقیم با کلیدهای جهت‌دار =====
+    // حرکت با کلیدهای جهت‌دار
     if (game.isRunningCode)
     {
         const Uint8* keys = SDL_GetKeyboardState(NULL);
         double moveSpeed = 3.0;
+        bool moved = false;
 
         if (keys[SDL_SCANCODE_UP])
-            game.player.y -= moveSpeed;
-        if (keys[SDL_SCANCODE_DOWN])
-            game.player.y += moveSpeed;
-        if (keys[SDL_SCANCODE_LEFT])
-            game.player.x -= moveSpeed;
-        if (keys[SDL_SCANCODE_RIGHT])
-            game.player.x += moveSpeed;
-
-        // رسم خط اگر قلم پایینه
-        if (game.player.penDown)
         {
-            double centerX = game.player.x + game.player.w/2;
-            double centerY = game.player.y + game.player.h/2;
+            game.player.y -= moveSpeed;
+            moved = true;
+        }
+        if (keys[SDL_SCANCODE_DOWN])
+        {
+            game.player.y += moveSpeed;
+            moved = true;
+        }
+        if (keys[SDL_SCANCODE_LEFT])
+        {
+            game.player.x -= moveSpeed;
+            moved = true;
+        }
+        if (keys[SDL_SCANCODE_RIGHT])
+        {
+            game.player.x += moveSpeed;
+            moved = true;
+        }
 
-            if (game.player.penMoved)
+        if (game.player.x < 0) game.player.x = 0;
+        if (game.player.y < 0) game.player.y = 0;
+        if (game.player.x + game.player.w > game.screenWidth)
+            game.player.x = game.screenWidth - game.player.w;
+        if (game.player.y + game.player.h > game.screenHeight)
+            game.player.y = game.screenHeight - game.player.h;
+
+        if (game.player.penDown && moved)
+        {
+            double centerX = game.player.x + game.player.w / 2;
+            double centerY = game.player.y + game.player.h / 2;
+
+            if (centerX != game.player.lastPenX || centerY != game.player.lastPenY)
             {
                 game.penX1.push_back((int)game.player.lastPenX);
                 game.penY1.push_back((int)game.player.lastPenY);
@@ -160,78 +746,296 @@ void handleEvents(bool &running, GameState& game)
                 game.penG_.push_back(game.player.penG);
                 game.penB_.push_back(game.player.penB);
                 game.penSize_.push_back(game.player.penSize);
+
+                game.player.lastPenX = centerX;
+                game.player.lastPenY = centerY;
             }
-
-            game.player.lastPenX = centerX;
-            game.player.lastPenY = centerY;
-            game.player.penMoved = true;
         }
-
-        // محدودیت مرزها
-        if (game.player.x < 0) game.player.x = 0;
-        if (game.player.y < 0) game.player.y = 0;
-        if (game.player.x + game.player.w > game.screenWidth)
-            game.player.x = game.screenWidth - game.player.w;
-        if (game.player.y + game.player.h > game.screenHeight)
-            game.player.y = game.screenHeight - game.player.h;
+        else if (!game.player.penDown)
+        {
+            game.player.lastPenX = game.player.x + game.player.w / 2;
+            game.player.lastPenY = game.player.y + game.player.h / 2;
+        }
     }
 }
 
 void render(SDL_Renderer* renderer, GameState& game)
 {
-    // ========== ابتدا خطوط قلم رو بکش ==========
+    // رسم خطوط قلم
     for (int i = 0; i < game.penX1.size(); i++)
     {
-        // رسم خط با ضخامت مشخص
         for (int thickness = 0; thickness < game.penSize_[i]; thickness++)
         {
-            int offset = thickness - game.penSize_[i]/2;
-            thickLineRGBA(renderer,
-                          game.penX1[i], game.penY1[i] + offset,
-                          game.penX2[i], game.penY2[i] + offset,
-                          1,
-                          game.penR_[i], game.penG_[i], game.penB_[i], 255);
+            int offset = thickness - game.penSize_[i] / 2;
+            SDL_SetRenderDrawColor(renderer, game.penR_[i], game.penG_[i], game.penB_[i], 255);
+            SDL_RenderDrawLine(renderer,
+                               game.penX1[i], game.penY1[i] + offset,
+                               game.penX2[i], game.penY2[i] + offset);
         }
     }
 
-    // ========== نوار بالایی ==========
-    int red, green, blue;
+    // پس‌زمینه اصلی
+    SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
+    SDL_RenderClear(renderer);
 
-    if (game.stepMode)
-    {
-        red = 220; green = 220; blue = 80;
-    }
-    else if (game.isRunningCode)
-    {
-        red = 80; green = 220; blue = 80;
-    }
+    // نوار منوی بالا
+    SDL_Rect menuBar = {0, 0, game.screenWidth, 60};
+    SDL_SetRenderDrawColor(renderer, 70, 150, 70, 255);
+    SDL_RenderFillRect(renderer, &menuBar);
+
+    // لوگو
+    filledCircleRGBA(renderer, 40, 30, 20, 255, 255, 255, 255);
+    SDL_Color white = {255,255,255,255};
+    renderText(renderer, "Scratch", 70, 20, white);
+
+    // وضعیت اجرا
+    if (game.isRunningCode)
+        filledCircleRGBA(renderer, game.screenWidth - 100, 30, 15, 0, 255, 0, 255);
     else
+        filledCircleRGBA(renderer, game.screenWidth - 100, 30, 15, 255, 0, 0, 255);
+
+    // ========== ۱. پنل دسته‌بندی (سمت چپ) ==========
+    int categoriesPanelWidth = 180;
+    SDL_Rect categoriesPanel = {10, 70, categoriesPanelWidth, game.screenHeight - 150};
+    SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+    SDL_RenderFillRect(renderer, &categoriesPanel);
+    SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+    SDL_RenderDrawRect(renderer, &categoriesPanel);
+
+    SDL_Color black = {0,0,0,255};
+    renderText(renderer, "Categories", 15, 75, black);
+
+    // رنگ‌های دسته‌بندی
+    Uint8 catColors[8][3] = {
+            {70, 120, 255},   // حرکت
+            {100, 150, 255},  // ظاهر
+            {200, 50, 200},   // صدا
+            {255, 200, 50},   // رویدادها
+            {255, 140, 0},    // کنترل
+            {0, 200, 200},    // حسگر
+            {70, 200, 70},    // عملگرها
+            {255, 100, 50}    // متغیرها
+    };
+
+    const char* catNames[] = {
+            "Motion", "Looks", "Sound", "Events",
+            "Control", "Sensing", "Operators", "Variables"
+    };
+
+    Button* catButtons[] = {
+            &game.moveCategoryBtn, &game.looksCategoryBtn, &game.soundCategoryBtn,
+            &game.eventsCategoryBtn, &game.controlCategoryBtn, &game.sensingCategoryBtn,
+            &game.operatorsCategoryBtn, &game.variablesCategoryBtn
+    };
+
+    for (int i = 0; i < 8; i++)
     {
-        red = 80; green = 80; blue = 220;
+        SDL_Rect catRect = {catButtons[i]->x, catButtons[i]->y, catButtons[i]->w, catButtons[i]->h};
+
+        if (catButtons[i]->isPressed || game.currentCategory == i)
+        {
+            SDL_SetRenderDrawColor(renderer, catColors[i][0]/2, catColors[i][1]/2, catColors[i][2]/2, 255);
+        }
+        else
+        {
+            SDL_SetRenderDrawColor(renderer, catColors[i][0], catColors[i][1], catColors[i][2], 255);
+        }
+
+        SDL_RenderFillRect(renderer, &catRect);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderDrawRect(renderer, &catRect);
+
+        renderText(renderer, catNames[i], catRect.x + 5, catRect.y + 10, white);
     }
 
-    SDL_Rect topBar = {0, 0, game.screenWidth, 40};
-    SDL_SetRenderDrawColor(renderer, red/2, green/2, blue/2, 255);
-    SDL_RenderFillRect(renderer, &topBar);
+    // ========== ۲. پنل بلوک‌های مثال ==========
+    int examplesPanelX = categoriesPanelWidth + 30;
+    int examplesPanelWidth = 250;
+    SDL_Rect examplesPanel = {examplesPanelX, 70, examplesPanelWidth, game.screenHeight - 150};
+    SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
+    SDL_RenderFillRect(renderer, &examplesPanel);
+    SDL_SetRenderDrawColor(renderer, 180, 180, 180, 255);
+    SDL_RenderDrawRect(renderer, &examplesPanel);
 
-    // ========== پنل بلوک‌ها ==========
-    int startX = 50;
-    int startY = 80;
-    int blockWidth = 250;
-    int blockHeight = 40;
-    int spacing = 10;
+    renderText(renderer, "Blocks", examplesPanelX + 10, 75, black);
 
-    for (int i = 0; i < game.program.size(); i++)
+    int exampleBlockStartY = 110;
+    int maxBlocks = (examplesPanel.h - 60) / 45;
+
+    if (game.currentCategory == 0)  // حرکت
     {
-        SDL_Rect blockRect = {
-                startX,
-                startY + i * (blockHeight + spacing),
-                blockWidth,
-                blockHeight
-        };
+        const char* moveBlocks[] = {"move 10 steps", "turn 15 degrees", "turn -15 degrees",
+                                    "go to x: y:", "go to mouse-pointer", "glide 1 secs",
+                                    "change x by 10", "set x to 0", "change y by 10", "set y to 0"};
+        int numBlocks = 10;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, moveBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 1)  // ظاهر
+    {
+        const char* looksBlocks[] = {"say Hello for 2 secs", "say Hello", "think Hmm... for 2 secs",
+                                     "think Hmm...", "show", "hide", "change size by 10",
+                                     "set size to 100 %"};
+        int numBlocks = 8;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, looksBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 2)  // صدا
+    {
+        const char* soundBlocks[] = {"play sound Meow", "play sound until done",
+                                     "stop all sounds", "change volume by 10",
+                                     "set volume to 100 %"};
+        int numBlocks = 5;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, soundBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 3)  // رویدادها
+    {
+        const char* eventBlocks[] = {"when flag clicked", "when key pressed", "when sprite clicked",
+                                     "when backdrop switches", "when I receive msg1",
+                                     "broadcast msg1", "broadcast and wait"};
+        int numBlocks = 7;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, eventBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 4)  // کنترل
+    {
+        const char* controlBlocks[] = {"wait 1 seconds", "repeat 10", "forever",
+                                       "if then", "if then else", "wait until",
+                                       "repeat until", "stop all"};
+        int numBlocks = 8;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, controlBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 5)  // حسگر
+    {
+        const char* sensingBlocks[] = {"touching mouse-pointer?", "touching color?",
+                                       "distance to mouse", "ask and wait", "answer",
+                                       "key pressed?", "mouse down?", "mouse x", "mouse y"};
+        int numBlocks = 9;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, sensingBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 6)  // عملگرها
+    {
+        const char* operatorBlocks[] = {"0 + 0", "0 - 0", "0 * 0", "0 / 0",
+                                        "pick random 1 to 10", "0 < 0", "0 = 0",
+                                        "0 > 0", "and", "or", "not"};
+        int numBlocks = 8;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, operatorBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+    else if (game.currentCategory == 7)  // متغیرها
+    {
+        const char* varBlocks[] = {"set variable to 0", "change variable by 1",
+                                   "show variable", "hide variable",
+                                   "set my var to 0", "change my var by 1"};
+        int numBlocks = 6;
+        for (int i = 0; i < numBlocks && i < maxBlocks; i++)
+        {
+            int blockY = exampleBlockStartY + i * 45;
+            SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
+
+            SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255);
+            SDL_RenderFillRect(renderer, &blockRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &blockRect);
+
+            renderText(renderer, varBlocks[i], blockRect.x + 5, blockRect.y + 10, black);
+        }
+    }
+
+    // ========== ۳. فضای کدنویسی (Code Area) ==========
+    int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
+    int codeAreaWidth = 600;
+    SDL_Rect codeArea = {codeAreaX, 70, codeAreaWidth, game.screenHeight - 150};
+
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderFillRect(renderer, &codeArea);
+    SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
+    SDL_RenderDrawRect(renderer, &codeArea);
+
+    renderText(renderer, "Code Area", codeArea.x + 10, codeArea.y + 5, black);
+
+    // نمایش بلوک‌های برنامه در فضای کدنویسی
+    for (int i = 0; i < game.program.size() && i < 20; i++)
+    {
+        int blockY = codeArea.y + 30 + i * 45;
+        SDL_Rect blockRect = {codeArea.x + 10, blockY, codeArea.w - 20, 35};
 
         BlockType type = game.program[i].type;
 
+        // رنگ‌بندی بلوک‌ها
         if (type >= MOVE_UP && type <= MOVE_RIGHT)
             SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255);
         else if (type >= REPEAT && type <= WAIT)
@@ -240,20 +1044,322 @@ void render(SDL_Renderer* renderer, GameState& game)
             SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255);
         else if (type >= SAY && type <= THINK_FOR)
             SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
-        else if (type >= PEN_DOWN && type <= CHANGE_PEN_SIZE)
-            SDL_SetRenderDrawColor(renderer, 50, 200, 150, 255);  // فیروزه‌ای برای قلم
+        else if (type >= WHEN_GREEN_FLAG && type <= WHEN_BROADCAST)
+            SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255);
+        else if (type >= SET_VARIABLE && type <= HIDE_VARIABLE)
+            SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255);
         else
-            SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
-
-        if (i == game.currentBlockIndex && game.isRunningCode)
-            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
 
         SDL_RenderFillRect(renderer, &blockRect);
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderDrawRect(renderer, &blockRect);
+
+        // نمایش متن بلوک با قابلیت ویرایش
+        string blockText;
+        SDL_Color blue = {0, 0, 255, 255};
+        SDL_Color textColor = black;
+
+        if (game.program[i].editingMode)
+        {
+            textColor = blue;
+        }
+
+        if (type == GOTO_XY && game.program[i].parameters.size() >= 2)
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = "go to x: " + game.program[i].editingBuffer + "_ y: " +
+                            to_string((int)game.program[i].parameters[1].asNumber());
+            }
+            else if (game.program[i].editingMode && game.program[i].editingField == 1)
+            {
+                blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
+                            " y: " + game.program[i].editingBuffer + "_";
+            }
+            else
+            {
+                blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
+                            " y: " + to_string((int)game.program[i].parameters[1].asNumber());
+            }
+        }
+        else if ((type == MOVE_UP || type == MOVE_DOWN || type == MOVE_LEFT || type == MOVE_RIGHT) &&
+                 !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = "move " + game.program[i].editingBuffer + "_ steps";
+            }
+            else
+            {
+                blockText = "move " + to_string((int)game.program[i].parameters[0].asNumber()) + " steps";
+            }
+        }
+        else if ((type == TURN_RIGHT || type == TURN_LEFT) && !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = (type == TURN_RIGHT ? "turn " : "turn ") +
+                            game.program[i].editingBuffer + "_ degrees";
+            }
+            else
+            {
+                blockText = (type == TURN_RIGHT ? "turn " : "turn ") +
+                            to_string((int)game.program[i].parameters[0].asNumber()) + " degrees";
+            }
+        }
+        else if ((type == CHANGE_X || type == CHANGE_Y) && !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = (type == CHANGE_X ? "change x by " : "change y by ") +
+                            game.program[i].editingBuffer + "_";
+            }
+            else
+            {
+                blockText = (type == CHANGE_X ? "change x by " : "change y by ") +
+                            to_string((int)game.program[i].parameters[0].asNumber());
+            }
+        }
+        else if ((type == SET_X || type == SET_Y) && !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = (type == SET_X ? "set x to " : "set y to ") +
+                            game.program[i].editingBuffer + "_";
+            }
+            else
+            {
+                blockText = (type == SET_X ? "set x to " : "set y to ") +
+                            to_string((int)game.program[i].parameters[0].asNumber());
+            }
+        }
+        else if (type == CHANGE_SIZE && !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = "change size by " + game.program[i].editingBuffer + "_";
+            }
+            else
+            {
+                blockText = "change size by " + to_string((int)game.program[i].parameters[0].asNumber());
+            }
+        }
+        else if (type == SET_SIZE && !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = "set size to " + game.program[i].editingBuffer + "_ %";
+            }
+            else
+            {
+                blockText = "set size to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
+            }
+        }
+        else if (type == WAIT && !game.program[i].parameters.empty())
+        {
+            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            {
+                blockText = "wait " + game.program[i].editingBuffer + "_ seconds";
+            }
+            else
+            {
+                blockText = "wait " + to_string(game.program[i].parameters[0].asNumber()) + " seconds";
+            }
+        }
+        else
+        {
+            blockText = game.program[i].eventName.empty() ? "Block " + to_string(i+1) : game.program[i].eventName;
+        }
+
+        renderText(renderer, blockText.c_str(), blockRect.x + 5, blockRect.y + 10, textColor);
+
+        if (i == game.currentBlockIndex && game.isRunningCode)
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            for (int t = 0; t < 3; t++)
+                SDL_RenderDrawRect(renderer, &blockRect);
+        }
     }
 
-    // ========== دکمه‌ها ==========
+    // ========== ۴. پنل استیج و اسپرایت (سمت راست) ==========
+    int stagePanelX = codeAreaX + codeAreaWidth + 10;
+    int stagePanelWidth = game.screenWidth - stagePanelX - 5;
+    if (stagePanelWidth > 500) stagePanelWidth = 500;
+
+    int stageWidth = stagePanelWidth - 20;
+    int stageHeight = 300;
+    SDL_Rect stage = {stagePanelX + 5, 70, stageWidth, stageHeight};
+    SDL_SetRenderDrawColor(renderer, 200, 220, 255, 255);
+    SDL_RenderFillRect(renderer, &stage);
+    SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    SDL_RenderDrawRect(renderer, &stage);
+    renderText(renderer, "Stage", stage.x + 10, stage.y + 5, black);
+
+    // اسپرایت داخل صحنه
+    if (game.player.visible)
+    {
+        int spriteStageX = stage.x + (int)((game.player.x / game.screenWidth) * stage.w);
+        int spriteStageY = stage.y + (int)((game.player.y / game.screenHeight) * stage.h);
+
+        if (spriteStageX < stage.x) spriteStageX = stage.x;
+        if (spriteStageY < stage.y) spriteStageY = stage.y;
+        if (spriteStageX + game.player.w/2 > stage.x + stage.w)
+            spriteStageX = stage.x + stage.w - game.player.w/2;
+        if (spriteStageY + game.player.h/2 > stage.y + stage.h)
+            spriteStageY = stage.y + stage.h - game.player.h/2;
+
+        SDL_Rect spriteRect = {spriteStageX, spriteStageY, game.player.w/2, game.player.h/2};
+
+        if (game.player.texture)
+        {
+            // محاسبه مرکز اسپرایت برای چرخش
+            SDL_Point center = {spriteRect.w/2, spriteRect.h/2};
+            double angle = game.player.direction;
+            SDL_RenderCopyEx(renderer, game.player.texture, NULL, &spriteRect, angle, &center, SDL_FLIP_NONE);
+        }
+        else
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 100, 100, 255);
+            SDL_RenderFillRect(renderer, &spriteRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &spriteRect);
+
+            // یه خط کوچیک جهت رو نشون بده
+            int centerX = spriteRect.x + spriteRect.w/2;
+            int centerY = spriteRect.y + spriteRect.h/2;
+            int lineX = centerX + (int)(spriteRect.w/2 * cos(game.player.direction * M_PI / 180));
+            int lineY = centerY - (int)(spriteRect.h/2 * sin(game.player.direction * M_PI / 180));
+            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+            SDL_RenderDrawLine(renderer, centerX, centerY, lineX, lineY);
+        }
+
+        // نمایش نام بالای اسپرایت
+        string spriteName = game.player.message.empty() ? "Sprite1" : game.player.message;
+        int nameX = spriteStageX + (game.player.w/4) - (spriteName.length() * 4);
+        int nameY = spriteStageY - 20;
+        renderText(renderer, spriteName.c_str(), nameX, nameY, black);
+
+        if (game.player.penDown)
+        {
+            filledCircleRGBA(renderer, spriteRect.x + spriteRect.w + 5, spriteRect.y, 3, 255, 0, 0, 255);
+        }
+    }
+
+    // پنل اسپرایت‌ها (زیر استیج) با مشخصات
+    int spritePanelY = stage.y + stage.h + 10;
+    SDL_Rect spritePanel = {stagePanelX + 5, spritePanelY, stageWidth, 150};
+    SDL_SetRenderDrawColor(renderer, 230, 230, 230, 255);
+    SDL_RenderFillRect(renderer, &spritePanel);
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_RenderDrawRect(renderer, &spritePanel);
+
+    renderText(renderer, "Sprite Properties", spritePanel.x + 10, spritePanel.y + 5, black);
+
+    SDL_Rect currentSprite = {spritePanel.x + 10, spritePanel.y + 25, 50, 50};
+
+    if (game.player.texture)
+    {
+        SDL_RenderCopy(renderer, game.player.texture, NULL, &currentSprite);
+    }
+    else
+    {
+        SDL_SetRenderDrawColor(renderer, 255, 150, 150, 255);
+        SDL_RenderFillRect(renderer, &currentSprite);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderDrawRect(renderer, &currentSprite);
+    }
+
+    // نمایش مشخصات اسپرایت (قابل کلیک)
+    int textX = spritePanel.x + 70;
+    int textY = spritePanel.y + 25;
+    int lineHeight = 20;
+    SDL_Color blue = {0, 0, 255, 255};
+    SDL_Color red = {255, 0, 0, 255};
+
+    // اسم
+    if (game.editingMode && game.editingField == 0)
+    {
+        string displayText = "Name: " + game.editingBuffer + "_";
+        renderText(renderer, displayText.c_str(), textX, textY, blue);
+    }
+    else
+    {
+        string nameText = "Name: " + (game.player.message.empty() ? "Sprite1" : game.player.message);
+        renderText(renderer, nameText.c_str(), textX, textY, black);
+    }
+
+    // X و Y
+    char buffer[100];
+    if (game.editingMode && game.editingField == 1)
+    {
+        sprintf(buffer, "X: %s_", game.editingBuffer.c_str());
+        renderText(renderer, buffer, textX, textY + lineHeight, blue);
+    }
+    else
+    {
+        sprintf(buffer, "X: %.1f", game.player.x);
+        renderText(renderer, buffer, textX, textY + lineHeight, black);
+    }
+
+    if (game.editingMode && game.editingField == 2)
+    {
+        sprintf(buffer, "Y: %s_", game.editingBuffer.c_str());
+        renderText(renderer, buffer, textX + 120, textY + lineHeight, blue);
+    }
+    else
+    {
+        sprintf(buffer, "Y: %.1f", game.player.y);
+        renderText(renderer, buffer, textX + 120, textY + lineHeight, black);
+    }
+
+    // Size
+    if (game.editingMode && game.editingField == 3)
+    {
+        sprintf(buffer, "Size: %s_", game.editingBuffer.c_str());
+        renderText(renderer, buffer, textX, textY + lineHeight * 2, blue);
+    }
+    else
+    {
+        sprintf(buffer, "Size: %d", game.player.w);
+        renderText(renderer, buffer, textX, textY + lineHeight * 2, black);
+    }
+
+    // Direction
+    if (game.editingMode && game.editingField == 4)
+    {
+        sprintf(buffer, "Dir: %s_", game.editingBuffer.c_str());
+        renderText(renderer, buffer, textX, textY + lineHeight * 3, blue);
+    }
+    else
+    {
+        sprintf(buffer, "Dir: %.1f", game.player.direction);
+        renderText(renderer, buffer, textX, textY + lineHeight * 3, black);
+    }
+
+    // Visible
+    string visibleText = game.player.visible ? "Visible: Yes" : "Visible: No";
+    renderText(renderer, visibleText.c_str(), textX, textY + lineHeight * 4, game.player.visible ? black : red);
+
+    // راهنما
+    renderText(renderer, "Click on any value to edit", spritePanel.x + 10, spritePanel.y + spritePanel.h - 20, black);
+
+    // ========== خطوط جداکننده ==========
+    SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_RenderDrawLine(renderer, categoriesPanelWidth + 15, 70, categoriesPanelWidth + 15, game.screenHeight - 80);
+    SDL_RenderDrawLine(renderer, examplesPanelX + examplesPanelWidth + 15, 70,
+                       examplesPanelX + examplesPanelWidth + 15, game.screenHeight - 80);
+    SDL_RenderDrawLine(renderer, codeAreaX + codeAreaWidth + 5, 70,
+                       codeAreaX + codeAreaWidth + 5, game.screenHeight - 80);
+
+    // ========== دکمه‌های کنترلی پایین صفحه ==========
+    int buttonY = game.screenHeight - 80;
+    int buttonWidth = 100;
+    int buttonHeight = 40;
+    int buttonSpacing = 10;
+    int startX = (game.screenWidth - (6 * (buttonWidth + buttonSpacing))) / 2;
+
+    // دکمه Run
     SDL_Rect runRect = {game.runButton.x, game.runButton.y, game.runButton.w, game.runButton.h};
     if (game.runButton.isPressed)
         SDL_SetRenderDrawColor(renderer, 0, 100, 0, 255);
@@ -262,7 +1368,9 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_RenderFillRect(renderer, &runRect);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &runRect);
+    renderText(renderer, "Run", runRect.x+30, runRect.y+12, white);
 
+    // دکمه Pause
     SDL_Rect pauseRect = {game.pauseButton.x, game.pauseButton.y, game.pauseButton.w, game.pauseButton.h};
     if (game.pauseButton.isPressed)
         SDL_SetRenderDrawColor(renderer, 100, 0, 0, 255);
@@ -271,7 +1379,9 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_RenderFillRect(renderer, &pauseRect);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &pauseRect);
+    renderText(renderer, "Pause", pauseRect.x+25, pauseRect.y+12, white);
 
+    // دکمه Step
     SDL_Rect stepRect = {game.stepButton.x, game.stepButton.y, game.stepButton.w, game.stepButton.h};
     if (game.stepButton.isPressed)
         SDL_SetRenderDrawColor(renderer, 0, 0, 100, 255);
@@ -280,86 +1390,36 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_RenderFillRect(renderer, &stepRect);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &stepRect);
+    renderText(renderer, "Step", stepRect.x+30, stepRect.y+12, white);
 
+    // دکمه Reset
+    SDL_Rect resetRect = {game.resetButton.x, game.resetButton.y, game.resetButton.w, game.resetButton.h};
     if (game.resetButton.isPressed)
-        boxRGBA(renderer,
-                game.resetButton.x,
-                game.resetButton.y,
-                game.resetButton.x + game.resetButton.w,
-                game.resetButton.y + game.resetButton.h,
-                100, 50, 10, 255);
+        boxRGBA(renderer, resetRect.x, resetRect.y, resetRect.x + resetRect.w, resetRect.y + resetRect.h, 100, 50, 10, 255);
     else
-        boxRGBA(renderer,
-                game.resetButton.x,
-                game.resetButton.y,
-                game.resetButton.x + game.resetButton.w,
-                game.resetButton.y + game.resetButton.h,
-                139, 69, 19, 255);
+        boxRGBA(renderer, resetRect.x, resetRect.y, resetRect.x + resetRect.w, resetRect.y + resetRect.h, 139, 69, 19, 255);
+    rectangleRGBA(renderer, resetRect.x, resetRect.y, resetRect.x + resetRect.w, resetRect.y + resetRect.h, 255, 255, 255, 255);
+    renderText(renderer, "Reset", resetRect.x+25, resetRect.y+12, white);
 
-    rectangleRGBA(renderer,
-                  game.resetButton.x,
-                  game.resetButton.y,
-                  game.resetButton.x + game.resetButton.w,
-                  game.resetButton.y + game.resetButton.h,
-                  255, 255, 255, 255);
+    // دکمه Save
+    SDL_Rect saveRect = {game.saveButton.x, game.saveButton.y, game.saveButton.w, game.saveButton.h};
+    if (game.saveButton.isPressed)
+        SDL_SetRenderDrawColor(renderer, 0, 100, 200, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 0, 150, 255, 255);
+    SDL_RenderFillRect(renderer, &saveRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &saveRect);
+    renderText(renderer, "Save", saveRect.x+30, saveRect.y+12, white);
 
-    // ========== اسپرایت ==========
-    if (game.player.visible)
-    {
-        SDL_Rect spriteRect = {
-                (int)game.player.x,
-                (int)game.player.y,
-                game.player.w,
-                game.player.h
-        };
-
-        // اگه قلم پایینه، یه علامت کنار اسپرایت بذار
-        if (game.player.penDown)
-        {
-            // یه دایره قرمز کنار اسپرایت
-            filledCircleRGBA(renderer,
-                             (int)game.player.x + game.player.w + 10,
-                             (int)game.player.y,
-                             5, 255, 0, 0, 255);
-        }
-
-        SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-        SDL_RenderFillRect(renderer, &spriteRect);
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderDrawRect(renderer, &spriteRect);
-
-        // ========== حباب گفتن ==========
-        if (!game.player.message.empty())
-        {
-            SDL_Rect bubble;
-            bubble.x = (int)game.player.x + game.player.w/2 - 75;
-            bubble.y = (int)game.player.y - 80;
-            bubble.w = 150;
-            bubble.h = 50;
-
-            if (game.player.isThinking)
-                SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
-            else
-                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
-
-            SDL_RenderFillRect(renderer, &bubble);
-            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-            SDL_RenderDrawRect(renderer, &bubble);
-        }
-    }
-
-    // ========== پنل متغیرها ==========
-    if (!game.variables.empty())
-    {
-        int panelX = game.screenWidth - 250;
-        int panelY = 100;
-        int panelWidth = 230;
-        int panelHeight = (int)game.variables.size() * 30 + 20;
-
-        SDL_Rect varPanel = {panelX, panelY, panelWidth, panelHeight};
-        SDL_SetRenderDrawColor(renderer, 50, 50, 50, 200);
-        SDL_RenderFillRect(renderer, &varPanel);
-        SDL_SetRenderDrawColor(renderer, 200, 200, 200, 255);
-        SDL_RenderDrawRect(renderer, &varPanel);
-    }
+    // دکمه Load
+    SDL_Rect loadRect = {game.loadButton.x, game.loadButton.y, game.loadButton.w, game.loadButton.h};
+    if (game.loadButton.isPressed)
+        SDL_SetRenderDrawColor(renderer, 150, 0, 150, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 200, 0, 200, 255);
+    SDL_RenderFillRect(renderer, &loadRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &loadRect);
+    renderText(renderer, "Load", loadRect.x+30, loadRect.y+12, white);
 }

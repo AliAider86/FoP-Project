@@ -61,22 +61,22 @@ enum BlockType
     SHOW_VARIABLE,
     HIDE_VARIABLE,
 
-    TURN_RIGHT,        // چرخش به راست
-    TURN_LEFT,         // چرخش به چپ
-    GOTO_XY,           // رفتن به مختصات مشخص
-    CHANGE_X,          // تغییر X
-    CHANGE_Y,          // تغییر Y
-    SET_X,             // تنظیم X
-    SET_Y,             // تنظیم Y
-    POINT_DIRECTION,   // تنظیم جهت
-    GOTO_RANDOM,       // رفتن به موقعیت تصادفی
-    GOTO_MOUSE,        // رفتن به موقعیت ماوس
+    TURN_RIGHT,
+    TURN_LEFT,
+    GOTO_XY,
+    CHANGE_X,
+    CHANGE_Y,
+    SET_X,
+    SET_Y,
+    POINT_DIRECTION,
+    GOTO_RANDOM,
+    GOTO_MOUSE,
 
-    WHEN_GREEN_FLAG,     // وقتی پرچم سبز زده شد
-    WHEN_KEY_PRESSED,    // وقتی کلیدی فشرده شد
-    WHEN_SPRITE_CLICKED, // وقتی اسپرایت کلیک شد
-    BROADCAST,           // ارسال پیام
-    WHEN_BROADCAST,      // وقتی پیام رسید
+    WHEN_GREEN_FLAG,
+    WHEN_KEY_PRESSED,
+    WHEN_SPRITE_CLICKED,
+    BROADCAST,
+    WHEN_BROADCAST,
 
     TOUCHING_MOUSE,
     TOUCHING_EDGE,
@@ -94,14 +94,14 @@ enum BlockType
     TIMER,
     RESET_TIMER,
 
-    PEN_CLEAR,        // پاک کردن همه
-    PEN_STAMP,        // مهر زدن
-    PEN_DOWN,         // قلم پایین
-    PEN_UP,           // قلم بالا
-    SET_PEN_COLOR,    // تنظیم رنگ قلم
-    CHANGE_PEN_COLOR, // تغییر رنگ قلم
-    SET_PEN_SIZE,     // تنظیم ضخامت قلم
-    CHANGE_PEN_SIZE   // تغییر ضخامت قلم
+    PEN_CLEAR,
+    PEN_STAMP,
+    PEN_DOWN,
+    PEN_UP,
+    SET_PEN_COLOR,
+    CHANGE_PEN_COLOR,
+    SET_PEN_SIZE,
+    CHANGE_PEN_SIZE
 };
 
 struct Block
@@ -110,11 +110,16 @@ struct Block
     vector<Value> parameters;
     int repeatCount;
     string variableName;
-    string eventName;     // برای BROADCAST و WHEN_BROADCAST
+    string eventName;     // برای BROADCAST و WHEN_BROADCAST و ذخیره نام بلوک
     int keyCode;          // برای WHEN_KEY_PRESSED
 
-    Block() : repeatCount(0), keyCode(0) {}
-    Block(BlockType t) : type(t), repeatCount(0), keyCode(0) {}
+    // برای ویرایش بلوک - این سه خط رو اضافه کن
+    bool editingMode;     // آیا در حال ویرایش هستیم؟
+    int editingField;     // کدوم فیلد در حال ویرایشه (0=پارامتر اول، 1=پارامتر دوم، ...)
+    string editingBuffer; // متن در حال ویرایش
+
+    Block() : repeatCount(0), keyCode(0), editingMode(false), editingField(-1) {}
+    Block(BlockType t) : type(t), repeatCount(0), keyCode(0), editingMode(false), editingField(-1) {}
 };
 
 #endif

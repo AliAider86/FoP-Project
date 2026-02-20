@@ -24,7 +24,7 @@ struct Sprite
     double x, y;
     int w, h;
     bool visible;
-    double direction;  // جهت بر حسب درجه (0=راست, 90=بالا, و...)
+    double direction;
 
     string message;
     bool isThinking;
@@ -36,9 +36,14 @@ struct Sprite
     double lastPenX, lastPenY;
     bool penMoved;
 
+    // برای تصویر اسپرایت
+    SDL_Texture* texture;
+    string imagePath;
+
     Sprite() : x(0), y(0), w(50), h(50), visible(true), direction(0),
                message(""), isThinking(false), penDown(false), penSize(2),
-               penR(0), penG(0), penB(0), lastPenX(0), lastPenY(0), penMoved(false) {}
+               penR(0), penG(0), penB(0), lastPenX(0), lastPenY(0), penMoved(false),
+               texture(nullptr), imagePath("") {}
 };
 
 struct GameState
@@ -62,48 +67,66 @@ struct GameState
     Button pauseButton;
     Button stepButton;
     Button resetButton;
+    Button saveButton;
+    Button loadButton;
+
+    // دکمه‌های دسته‌بندی
+    Button moveCategoryBtn;
+    Button looksCategoryBtn;
+    Button soundCategoryBtn;
+    Button eventsCategoryBtn;
+    Button controlCategoryBtn;
+    Button sensingCategoryBtn;
+    Button operatorsCategoryBtn;
+    Button variablesCategoryBtn;
+
+    // دسته فعلی
+    int currentCategory;  // 0=حرکت, 1=ظاهر, 2=صدا, 3=رویدادها, 4=کنترل, 5=حسگر, 6=عملگرها, 7=متغیرها
 
     vector<int> repeatCountStack;
     vector<int> repeatStartStack;
 
-    // برای WAIT ساده
     Uint32 waitStartTime;
     Uint32 waitDuration;
     bool isWaiting;
 
-    // برای SAY_FOR و THINK_FOR
     Uint32 messageStartTime;
     Uint32 messageDuration;
     bool isShowingMessage;
 
-    // برای متغیرها
     unordered_map<string, Value> variables;
 
-    // برای رویدادها
     bool greenFlagPressed;
     Uint8 pressedKeys[SDL_NUM_SCANCODES];
+    Uint8 pressedThisFrame[SDL_NUM_SCANCODES];
     bool spriteClicked;
     int mouseX, mouseY;
     bool mousePressed;
 
-    // برای مدیریت چند اسکریپت
     vector<int> scriptStartIndices;
     vector<bool> scriptActive;
     vector<int> scriptCurrentBlock;
 
-    // برای حسگری
     string askQuestion;
     string answer;
     bool waitingForAnswer;
     Uint32 timerStartTime;
     bool dragMode;
 
-    // برای قلم - ذخیره خطوط رسم شده
     vector<int> penX1, penY1, penX2, penY2;
     vector<Uint8> penR_, penG_, penB_;
     vector<int> penSize_;
 
-    // سازنده
+    // برای عملی کردن بلوک‌ها
+    Block selectedBlock;
+    bool placingBlock;
+
+    // برای ویرایش اسپرایت
+    bool editingMode;           // آیا در حالت ویرایش هستیم؟
+    int editingField;           // کدوم فیلد در حال ویرایشه (0=نام, 1=x, 2=y, 3=size, 4=direction)
+    string editingBuffer;       // متن در حال ویرایش
+    bool showSpriteName;        // نمایش نام اسپرایت بالای سرش
+
     GameState() :
             currentBlockIndex(0),
             isRunningCode(false),
@@ -125,14 +148,24 @@ struct GameState
             mousePressed(false),
             waitingForAnswer(false),
             timerStartTime(0),
-            dragMode(false)
+            dragMode(false),
+            currentCategory(0),
+            placingBlock(false),
+            editingMode(false),
+            editingField(-1),
+            showSpriteName(true)
     {
         for (int i = 0; i < SDL_NUM_SCANCODES; i++)
+        {
             pressedKeys[i] = 0;
+            pressedThisFrame[i] = 0;
+        }
         timerStartTime = SDL_GetTicks();
     }
 };
 
 void update(GameState& game);
+void saveProject(const GameState& game, const string& filename);
+void loadProject(GameState& game, const string& filename);
 
 #endif

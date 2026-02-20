@@ -1,33 +1,182 @@
 #include <iostream>
 #include <algorithm>
+#include <fstream>
+#include <sstream>
 #include "engine.h"
 #include "operators.h"
 
 using namespace std;
 
+void saveProject(const GameState& game, const string& filename)
+{
+    ofstream file(filename);
+    if (!file.is_open())
+    {
+        cout << "Error: Could not save file!" << endl;
+        return;
+    }
+
+    file << "Sprite " << game.player.x << " " << game.player.y << " "
+         << game.player.w << " " << game.player.h << " "
+         << game.player.visible << " " << game.player.direction << endl;
+
+    file << "Blocks " << game.program.size() << endl;
+    for (const Block& b : game.program)
+    {
+        file << (int)b.type << " " << b.parameters.size() << " ";
+        for (const Value& v : b.parameters)
+        {
+            if (v.type == VALUE_NUMBER)
+                file << "num " << v.asNumber() << " ";
+            else if (v.type == VALUE_STRING)
+                file << "str " << v.asString() << " ";
+            else if (v.type == VALUE_BOOLEAN)
+                file << "bool " << v.asBoolean() << " ";
+        }
+        file << b.repeatCount << " " << b.variableName << " "
+             << b.eventName << " " << b.keyCode << endl;
+    }
+
+    file << "Variables " << game.variables.size() << endl;
+    for (const auto& var : game.variables)
+    {
+        file << var.first << " ";
+        if (var.second.type == VALUE_NUMBER)
+            file << "num " << var.second.asNumber() << endl;
+        else if (var.second.type == VALUE_STRING)
+            file << "str " << var.second.asString() << endl;
+        else if (var.second.type == VALUE_BOOLEAN)
+            file << "bool " << var.second.asBoolean() << endl;
+    }
+
+    file.close();
+    cout << "Project saved to " << filename << endl;
+}
+
+void loadProject(GameState& game, const string& filename)
+{
+    ifstream file(filename);
+    if (!file.is_open())
+    {
+        cout << "Error: Could not load file!" << endl;
+        return;
+    }
+
+    game.program.clear();
+    game.variables.clear();
+    game.scriptStartIndices.clear();
+    game.scriptActive.clear();
+    game.scriptCurrentBlock.clear();
+    game.penX1.clear();
+    game.penY1.clear();
+    game.penX2.clear();
+    game.penY2.clear();
+
+    string token;
+    while (file >> token)
+    {
+        if (token == "Sprite")
+        {
+            file >> game.player.x >> game.player.y
+                 >> game.player.w >> game.player.h
+                 >> game.player.visible >> game.player.direction;
+        }
+        else if (token == "Blocks")
+        {
+            int count;
+            file >> count;
+            for (int i = 0; i < count; i++)
+            {
+                Block b;
+                int typeInt, paramCount;
+                file >> typeInt >> paramCount;
+                b.type = (BlockType)typeInt;
+
+                for (int j = 0; j < paramCount; j++)
+                {
+                    string valType;
+                    file >> valType;
+                    if (valType == "num")
+                    {
+                        double d;
+                        file >> d;
+                        b.parameters.push_back(Value(d));
+                    }
+                    else if (valType == "str")
+                    {
+                        string s;
+                        file >> s;
+                        b.parameters.push_back(Value(s));
+                    }
+                    else if (valType == "bool")
+                    {
+                        bool bVal;
+                        file >> bVal;
+                        b.parameters.push_back(Value(bVal));
+                    }
+                }
+                file >> b.repeatCount >> b.variableName >> b.eventName >> b.keyCode;
+                game.program.push_back(b);
+            }
+        }
+        else if (token == "Variables")
+        {
+            int count;
+            file >> count;
+            for (int i = 0; i < count; i++)
+            {
+                string varName, valType;
+                file >> varName >> valType;
+                if (valType == "num")
+                {
+                    double d;
+                    file >> d;
+                    game.variables[varName] = Value(d);
+                }
+                else if (valType == "str")
+                {
+                    string s;
+                    file >> s;
+                    game.variables[varName] = Value(s);
+                }
+                else if (valType == "bool")
+                {
+                    bool b;
+                    file >> b;
+                    game.variables[varName] = Value(b);
+                }
+            }
+        }
+    }
+
+    file.close();
+    cout << "Project loaded from " << filename << endl;
+}
+
 void update(GameState& game)
 {
+//    cout << "Update called, isRunningCode = " << game.isRunningCode << endl;
     if (!game.isRunningCode)
         return;
 
+    const double speed = 2.0;
     int safetyCounter = 0;
     const int MAX_OPERATIONS_PER_FRAME = 1000;
 
-    // ===== پردازش رویدادها و فعال کردن اسکریپت‌های مربوطه =====
-
-    // رویداد Green Flag
+// رویداد Green Flag
     if (game.greenFlagPressed)
     {
         game.greenFlagPressed = false;
-        for (int i = 0; i < game.program.size(); i++)
-        {
-            if (game.program[i].type == WHEN_GREEN_FLAG)
-            {
-                game.scriptStartIndices.push_back(i + 1);
-                game.scriptActive.push_back(true);
-                game.scriptCurrentBlock.push_back(i + 1);
-            }
-        }
+
+        // پاک کردن اسکریپت‌های قبلی
+        game.scriptStartIndices.clear();
+        game.scriptActive.clear();
+        game.scriptCurrentBlock.clear();
+
+        // ایجاد یک اسکریپت که از اولین بلوک شروع میشه
+        game.scriptStartIndices.push_back(0);
+        game.scriptActive.push_back(true);
+        game.scriptCurrentBlock.push_back(0);
     }
 
     // رویداد کلیک روی اسپرایت
@@ -45,39 +194,35 @@ void update(GameState& game)
         }
     }
 
-    // رویداد کلید فشرده - نسخه اصلاح شده
+    // رویداد کلید فشرده
     for (int i = 0; i < game.program.size(); i++)
     {
         if (game.program[i].type == WHEN_KEY_PRESSED)
         {
             int key = game.program[i].keyCode;
-            if (game.pressedKeys[key])
+            if (game.pressedThisFrame[key])
             {
-                // اول اسکریپت‌های قبلی این کلید رو پاک کن
-                for (int j = game.scriptStartIndices.size() - 1; j >= 0; j--)
+                bool alreadyActive = false;
+                for (int j = 0; j < game.scriptStartIndices.size(); j++)
                 {
-                    int scriptStart = game.scriptStartIndices[j];
-                    if (scriptStart > 0 && scriptStart - 1 < game.program.size())
+                    if (game.scriptStartIndices[j] == i + 1)
                     {
-                        if (game.program[scriptStart - 1].type == WHEN_KEY_PRESSED &&
-                            game.program[scriptStart - 1].keyCode == key)
-                        {
-                            game.scriptStartIndices.erase(game.scriptStartIndices.begin() + j);
-                            game.scriptActive.erase(game.scriptActive.begin() + j);
-                            game.scriptCurrentBlock.erase(game.scriptCurrentBlock.begin() + j);
-                        }
+                        alreadyActive = true;
+                        break;
                     }
                 }
 
-                // بعد اسکریپت جدید اضافه کن
-                game.scriptStartIndices.push_back(i + 1);
-                game.scriptActive.push_back(true);
-                game.scriptCurrentBlock.push_back(i + 1);
+                if (!alreadyActive)
+                {
+                    game.scriptStartIndices.push_back(i + 1);
+                    game.scriptActive.push_back(true);
+                    game.scriptCurrentBlock.push_back(i + 1);
+                }
             }
         }
     }
 
-    // ===== اجرای اسکریپت‌های فعال =====
+    // اجرای اسکریپت‌های فعال
     for (int s = 0; s < game.scriptStartIndices.size(); s++)
     {
         if (!game.scriptActive[s])
@@ -299,17 +444,118 @@ void update(GameState& game)
             continue;
         }
 
+        // ===== بلوک‌های حرکتی =====
+        if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
+            b.type == TURN_RIGHT || b.type == TURN_LEFT || b.type == GOTO_XY || b.type == CHANGE_X ||
+            b.type == CHANGE_Y || b.type == SET_X || b.type == SET_Y || b.type == GOTO_RANDOM)
+        {
+            if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT)
+            {
+                if (!game.isExecutingBlock)
+                {
+                    if (!b.parameters.empty())
+                        game.remainingMove = b.parameters[0].asNumber();
+                    else
+                        game.remainingMove = 5;
+                    game.isExecutingBlock = true;
+                }
+
+                double moveAmount = min(speed, game.remainingMove);
+
+                switch (b.type)
+                {
+                    case MOVE_UP:    game.player.y -= moveAmount; break;
+                    case MOVE_DOWN:  game.player.y += moveAmount; break;
+                    case MOVE_LEFT:  game.player.x -= moveAmount; break;
+                    case MOVE_RIGHT: game.player.x += moveAmount; break;
+                    default: break;
+                }
+
+                game.remainingMove -= moveAmount;
+
+                if (game.remainingMove <= 0)
+                {
+                    game.isExecutingBlock = false;
+                    scriptPC++;  // <--- این خط رو اضافه کن
+                }
+                else
+                {
+                    // اگه هنوز حرکت تموم نشده، همینجا بمون و بعداً ادامه بده
+                    break;
+                }
+            }
+            else
+            {
+                // بلوک‌های حرکتی غیر از move (مثل turn, goto, ...)
+                if (b.type == TURN_RIGHT)
+                {
+                    if (!b.parameters.empty())
+                        game.player.direction += b.parameters[0].asNumber();
+                }
+                else if (b.type == TURN_LEFT)
+                {
+                    if (!b.parameters.empty())
+                        game.player.direction -= b.parameters[0].asNumber();
+                }
+                else if (b.type == GOTO_XY)
+                {
+                    if (b.parameters.size() >= 2)
+                    {
+                        game.player.x = b.parameters[0].asNumber();
+                        game.player.y = b.parameters[1].asNumber();
+                    }
+                }
+                else if (b.type == CHANGE_X)
+                {
+                    if (!b.parameters.empty())
+                        game.player.x += b.parameters[0].asNumber();
+                }
+                else if (b.type == CHANGE_Y)
+                {
+                    if (!b.parameters.empty())
+                        game.player.y += b.parameters[0].asNumber();
+                }
+                else if (b.type == SET_X)
+                {
+                    if (!b.parameters.empty())
+                        game.player.x = b.parameters[0].asNumber();
+                }
+                else if (b.type == SET_Y)
+                {
+                    if (!b.parameters.empty())
+                        game.player.y = b.parameters[0].asNumber();
+                }
+                else if (b.type == GOTO_RANDOM)
+                {
+                    game.player.x = rand() % (game.screenWidth - game.player.w);
+                    game.player.y = rand() % (game.screenHeight - game.player.h);
+                }
+
+                // محدودیت مرزها
+                if (game.player.x < 0) game.player.x = 0;
+                if (game.player.y < 0) game.player.y = 0;
+                if (game.player.x + game.player.w > game.screenWidth)
+                    game.player.x = game.screenWidth - game.player.w;
+                if (game.player.y + game.player.h > game.screenHeight)
+                    game.player.y = game.screenHeight - game.player.h;
+
+                scriptPC++;  // <--- این خط رو اضافه کن
+            }
+
+            safetyCounter++;
+            continue;
+        }
+
         scriptPC++;
         safetyCounter++;
     }
 
-    // رسم خط اگر قلم پایین است - این بخش همیشه اجرا میشه
+    // رسم خط اگر قلم پایین است
     if (game.player.penDown && game.player.penMoved)
     {
         double centerX = game.player.x + game.player.w/2;
         double centerY = game.player.y + game.player.h/2;
 
-        // اگه حداقل یه پیکسل جابجا شده باشه
         if (abs(centerX - game.player.lastPenX) > 1 || abs(centerY - game.player.lastPenY) > 1)
         {
             game.penX1.push_back((int)game.player.lastPenX);
