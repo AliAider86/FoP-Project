@@ -307,7 +307,7 @@ void update(GameState& game)
             return;
         }
 
-        // ===== بلوک‌های ظاهری =====
+// ===== بلوک‌های ظاهری =====
         if (b.type == SAY || b.type == SAY_FOR || b.type == THINK || b.type == THINK_FOR)
         {
             if (b.type == SAY_FOR || b.type == THINK_FOR)
@@ -338,7 +338,7 @@ void update(GameState& game)
                 }
                 return;
             }
-            else
+            else // SAY یا THINK ساده (بدون زمان)
             {
                 if (!b.parameters.empty())
                 {
@@ -349,6 +349,138 @@ void update(GameState& game)
                 safetyCounter++;
                 continue;
             }
+        }
+
+        if (b.type == SHOW)
+        {
+            game.player.visible = true;
+            scriptPC++;
+            continue;
+        }
+
+        if (b.type == HIDE)
+        {
+            game.player.visible = false;
+            scriptPC++;
+            continue;
+        }
+
+        if (b.type == CHANGE_SIZE)
+        {
+            if (!b.parameters.empty())
+            {
+                double percent = b.parameters[0].asNumber();
+                game.player.w = (int)(game.player.w * (1 + percent/100));
+                game.player.h = (int)(game.player.h * (1 + percent/100));
+
+                // محدودیت حداقل اندازه
+                if (game.player.w < 5) game.player.w = 5;
+                if (game.player.h < 5) game.player.h = 5;
+            }
+            scriptPC++;
+            continue;
+        }
+
+        if (b.type == SET_SIZE)
+        {
+            if (!b.parameters.empty())
+            {
+                double percent = b.parameters[0].asNumber();
+                // درصد نسبت به اندازه اصلی (فعلاً از 50 به عنوان پایه استفاده می‌کنیم)
+                int newSize = (int)(percent);
+                if (newSize < 5) newSize = 5;
+                game.player.w = newSize;
+                game.player.h = newSize;
+            }
+            scriptPC++;
+            continue;
+        }
+
+        // ===== بلوک‌های صدا =====
+        if (b.type == PLAY_SOUND || b.type == PLAY_SOUND_UNTIL_DONE)
+        {
+            if (b.type == PLAY_SOUND)
+            {
+                // پخش صدا و ادامه
+                if (game.soundEffect)
+                {
+                    int volumeLevel = (game.volume * MIX_MAX_VOLUME) / 100;
+                    Mix_VolumeChunk(game.soundEffect, volumeLevel);
+                    Mix_PlayChannel(-1, game.soundEffect, 0);
+                }
+                scriptPC++;
+            }
+            else // PLAY_SOUND_UNTIL_DONE
+            {
+                // اگه تازه وارد این بلوک شدیم
+                if (!game.isWaiting)
+                {
+                    // پخش صدا (فقط یه بار)
+                    if (game.soundEffect)
+                    {
+                        int volumeLevel = (game.volume * MIX_MAX_VOLUME) / 100;
+                        Mix_VolumeChunk(game.soundEffect, volumeLevel);
+                        game.soundChannel = Mix_PlayChannel(-1, game.soundEffect, 0);
+
+                        if (game.soundChannel == -1)
+                        {
+                            cout << "Error playing sound: " << Mix_GetError() << endl;
+                        }
+                    }
+
+                    // مدت زمان پخش صدا (مثلاً 1 ثانیه)
+                    game.waitStartTime = SDL_GetTicks();
+                    game.waitDuration = 1000; // 1 ثانیه
+                    game.isWaiting = true;
+                    return;
+                }
+
+                // چک می‌کنیم ببینیم صدا تموم شده یا نه
+                if (SDL_GetTicks() - game.waitStartTime >= game.waitDuration)
+                {
+                    game.isWaiting = false;
+                    scriptPC++;
+                }
+                return;
+            }
+            continue;
+        }
+
+        if (b.type == STOP_ALL_SOUNDS)
+        {
+            Mix_HaltChannel(-1);  // توقف همه کانال‌ها
+            game.isPlayingSound = false;
+            cout << "Stopping all sounds" << endl;
+            scriptPC++;
+            continue;
+        }
+
+        if (b.type == CHANGE_VOLUME)
+        {
+            if (!b.parameters.empty())
+            {
+                int change = (int)b.parameters[0].asNumber();
+                game.volume += change;
+                if (game.volume < 0) game.volume = 0;
+                if (game.volume > 100) game.volume = 100;
+                cout << "Volume changed to: " << game.volume << endl;
+            }
+            scriptPC++;
+            continue;
+        }
+
+        if (b.type == SET_VOLUME)
+        {
+            if (!b.parameters.empty())
+            {
+                int newVolume = (int)b.parameters[0].asNumber();
+                if (newVolume < 0) newVolume = 0;
+                if (newVolume > 100) newVolume = 100;
+                game.volume = newVolume;
+                cout << "Volume set to: " << game.volume << endl;
+            }
+            scriptPC++;
+            continue;
         }
 
         // ===== بلوک‌های عملگر =====
@@ -447,7 +579,7 @@ void update(GameState& game)
         // ===== بلوک‌های حرکتی =====
         if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
             b.type == TURN_RIGHT || b.type == TURN_LEFT || b.type == GOTO_XY || b.type == CHANGE_X ||
-            b.type == CHANGE_Y || b.type == SET_X || b.type == SET_Y || b.type == GOTO_RANDOM)
+            b.type == CHANGE_Y || b.type == SET_X || b.type == SET_Y || b.type == GOTO_RANDOM || b.type == GOTO_MOUSE)
         {
             if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT)
             {
@@ -529,6 +661,50 @@ void update(GameState& game)
                 {
                     game.player.x = rand() % (game.screenWidth - game.player.w);
                     game.player.y = rand() % (game.screenHeight - game.player.h);
+                }
+                else if (b.type == GOTO_MOUSE)
+                {
+                    // محاسبه مختصات استیج
+                    int categoriesPanelWidth = 180;
+                    int examplesPanelX = categoriesPanelWidth + 30;
+                    int examplesPanelWidth = 250;
+                    int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
+                    int codeAreaWidth = 600;
+                    int stagePanelX = codeAreaX + codeAreaWidth + 10;
+                    int stagePanelWidth = game.screenWidth - stagePanelX - 5;
+                    if (stagePanelWidth > 500) stagePanelWidth = 500;
+
+                    int stageX = stagePanelX + 5;
+                    int stageY = 70;
+                    int stageWidth = stagePanelWidth - 20;
+                    int stageHeight = 300;
+
+                    // تبدیل مختصات ماوس به مختصات داخل استیج
+                    if (game.mouseX >= stageX && game.mouseX <= stageX + stageWidth &&
+                        game.mouseY >= stageY && game.mouseY <= stageY + stageHeight)
+                    {
+                        // ماوس داخل استیج هست
+                        game.player.x = (double)(game.mouseX - stageX) * game.screenWidth / stageWidth;
+                        game.player.y = (double)(game.mouseY - stageY) * game.screenHeight / stageHeight;
+                    }
+                    else
+                    {
+                        // ماوس خارج استیج هست - می‌تونی یه رفتار دیگه انتخاب کنی
+                        // مثلاً به مرکز استیج بره
+                        game.player.x = game.screenWidth / 2 - game.player.w / 2;
+                        game.player.y = game.screenHeight / 2 - game.player.h / 2;
+                    }
+
+                    // محدود کردن به صفحه
+                    if (game.player.x < 0) game.player.x = 0;
+                    if (game.player.y < 0) game.player.y = 0;
+                    if (game.player.x + game.player.w > game.screenWidth)
+                        game.player.x = game.screenWidth - game.player.w;
+                    if (game.player.y + game.player.h > game.screenHeight)
+                        game.player.y = game.screenHeight - game.player.h;
+
+                    scriptPC++;
+                    continue;
                 }
 
                 // محدودیت مرزها

@@ -75,8 +75,11 @@ enum BlockType
     WHEN_GREEN_FLAG,
     WHEN_KEY_PRESSED,
     WHEN_SPRITE_CLICKED,
-    BROADCAST,
-    WHEN_BROADCAST,
+    WHEN_BACKDROP_SWITCHES,  // اینو اضافه کن
+    WHEN_BROADCAST,          // اینو اضافه کن
+    BROADCAST,               // اینو اضافه کن
+    BROADCAST_AND_WAIT,      // اینو اضافه کن
+
 
     TOUCHING_MOUSE,
     TOUCHING_EDGE,
@@ -101,7 +104,13 @@ enum BlockType
     SET_PEN_COLOR,
     CHANGE_PEN_COLOR,
     SET_PEN_SIZE,
-    CHANGE_PEN_SIZE
+    CHANGE_PEN_SIZE,
+
+    PLAY_SOUND,
+    PLAY_SOUND_UNTIL_DONE,
+    STOP_ALL_SOUNDS,
+    CHANGE_VOLUME,
+    SET_VOLUME,
 };
 
 struct Block

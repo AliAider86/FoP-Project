@@ -2,12 +2,25 @@
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
+#include <SDL2/SDL_mixer.h>
 #include "engine.h"
 #include "ui.h"
 
 using namespace std;
 
 TTF_Font* g_font = nullptr;
+
+bool loadSound(GameState& game, const string& path)
+{
+    game.soundEffect = Mix_LoadWAV(path.c_str());
+    if (!game.soundEffect)
+    {
+        cout << "Failed to load sound: " << path << " - " << Mix_GetError() << endl;
+        return false;
+    }
+    cout << "Sound loaded: " << path << endl;
+    return true;
+}
 
 bool loadSpriteTexture(Sprite& sprite, SDL_Renderer* renderer, const string& path)
 {
@@ -73,6 +86,12 @@ int main(int argc, char* argv[])
         return -1;
     }
 
+// توی main، بعد از SDL_Init و TTF_Init:
+    if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
+    {
+        cout << "SDL_mixer could not initialize! Error: " << Mix_GetError() << endl;
+    }
+
     SDL_DisplayMode dm;
     SDL_GetCurrentDisplayMode(0, &dm);
 
@@ -116,6 +135,8 @@ int main(int argc, char* argv[])
     game.player.w = 158;
     game.player.h = 170;
 
+    loadSound(game, "meow.wav");  // فایل صوتی رو توی پوشه پروژه بذار
+
     // مقداردهی اولیه game
 //    game.player.w = 50;
 //    game.player.h = 50;
@@ -123,6 +144,7 @@ int main(int argc, char* argv[])
     game.player.y = double(dm.h) / 2 - 25;
     game.screenWidth = dm.w;
     game.screenHeight = dm.h;
+    game.player.name = "Sprite1";
 
     // دکمه‌های کنترلی پایین
     int buttonY = game.screenHeight - 80;
@@ -198,6 +220,10 @@ int main(int argc, char* argv[])
     SDL_DestroyWindow(window);
     TTF_Quit();
     SDL_Quit();
+    if (game.soundEffect)
+        Mix_FreeChunk(game.soundEffect);
+
+    Mix_CloseAudio();
 
     return 0;
 }

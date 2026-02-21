@@ -52,9 +52,52 @@ void handleEvents(bool &running, GameState& game)
         {
             game.mouseX = e.motion.x;
             game.mouseY = e.motion.y;
+
+            // ===== حرکت اسپرایت هنگام Drag =====
+            if (game.isDragging)
+            {
+                // محاسبه مختصات استیج
+                int categoriesPanelWidth = 180;
+                int examplesPanelX = categoriesPanelWidth + 30;
+                int examplesPanelWidth = 250;
+                int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
+                int codeAreaWidth = 600;
+                int stagePanelX = codeAreaX + codeAreaWidth + 10;
+                int stagePanelWidth = game.screenWidth - stagePanelX - 5;
+                if (stagePanelWidth > 500) stagePanelWidth = 500;
+
+                int stageX = stagePanelX + 5;
+                int stageY = 70;
+                int stageWidth = stagePanelWidth - 20;
+                int stageHeight = 300;
+
+                // موقعیت جدید در استیج
+                double newScreenX = e.motion.x - game.dragOffsetX;
+                double newScreenY = e.motion.y - game.dragOffsetY;
+
+                // محدود کردن به استیج
+                if (newScreenX < stageX) newScreenX = stageX;
+                if (newScreenY < stageY) newScreenY = stageY;
+                if (newScreenX + (game.player.w * stageWidth / game.screenWidth) > stageX + stageWidth)
+                    newScreenX = stageX + stageWidth - (game.player.w * stageWidth / game.screenWidth);
+                if (newScreenY + (game.player.h * stageHeight / game.screenHeight) > stageY + stageHeight)
+                    newScreenY = stageY + stageHeight - (game.player.h * stageHeight / game.screenHeight);
+
+                // تبدیل به مختصات اصلی
+                game.player.x = (newScreenX - stageX) * game.screenWidth / stageWidth;
+                game.player.y = (newScreenY - stageY) * game.screenHeight / stageHeight;
+
+                // محدود کردن به صفحه اصلی
+                if (game.player.x < 0) game.player.x = 0;
+                if (game.player.y < 0) game.player.y = 0;
+                if (game.player.x + game.player.w > game.screenWidth)
+                    game.player.x = game.screenWidth - game.player.w;
+                if (game.player.y + game.player.h > game.screenHeight)
+                    game.player.y = game.screenHeight - game.player.h;
+            }
         }
 
-        // ===== ویرایش با صفحه‌کلید =====
+// ===== ویرایش با صفحه‌کلید =====
         if (e.type == SDL_KEYDOWN)
         {
             // اول بررسی کن که آیا ویرایش مربوط به بلوک هست یا اسپرایت
@@ -73,18 +116,53 @@ void handleEvents(bool &running, GameState& game)
                         // پایان ویرایش
                         if (!b.editingBuffer.empty())
                         {
-                            double newVal = stod(b.editingBuffer);
-                            if (b.editingField < b.parameters.size())
+                            if (b.type == SAY_FOR || b.type == THINK_FOR)
                             {
-                                b.parameters[b.editingField] = Value(newVal);
-
-                                // برای SET_SIZE، مقدار را به int تبدیل کن
-                                if (b.type == SET_SIZE)
+                                if (b.editingField == 0)  // ویرایش متن
                                 {
-                                    int sizeVal = (int)newVal;
-                                    if (sizeVal < 1) sizeVal = 1;
-                                    b.parameters[b.editingField] = Value((double)sizeVal);
+                                    b.parameters[0] = Value(b.editingBuffer);
                                 }
+                                else if (b.editingField == 1)  // ویرایش زمان
+                                {
+                                    double newVal = stod(b.editingBuffer);
+                                    b.parameters[1] = Value(newVal);
+                                }
+                            }
+                            else if (b.type == SAY || b.type == THINK)
+                            {
+                                b.parameters[0] = Value(b.editingBuffer);
+                            }
+                            else if (b.type == GOTO_XY && b.parameters.size() >= 2)
+                            {
+                                double newVal = stod(b.editingBuffer);
+                                if (b.editingField < b.parameters.size())
+                                {
+                                    b.parameters[b.editingField] = Value(newVal);
+                                }
+                            }
+                            else if ((b.type == MOVE_UP || b.type == MOVE_DOWN ||
+                                      b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
+                                      b.type == TURN_RIGHT || b.type == TURN_LEFT ||
+                                      b.type == CHANGE_X || b.type == CHANGE_Y ||
+                                      b.type == SET_X || b.type == SET_Y ||
+                                      b.type == CHANGE_SIZE || b.type == WAIT) &&
+                                     !b.parameters.empty())
+                            {
+                                double newVal = stod(b.editingBuffer);
+                                b.parameters[0] = Value(newVal);
+                            }
+                            else if (b.type == SET_SIZE && !b.parameters.empty())
+                            {
+                                int newVal = stoi(b.editingBuffer);
+                                if (newVal < 1) newVal = 1;
+                                b.parameters[0] = Value((double)newVal);
+                            }
+                            else if (b.type == CHANGE_VOLUME || b.type == SET_VOLUME)
+                            {
+                                int newVal = stoi(b.editingBuffer);
+                                if (newVal < 0) newVal = 0;
+                                if (newVal > 100) newVal = 100;
+                                b.parameters[0] = Value((double)newVal);
                             }
                         }
                         b.editingMode = false;
@@ -101,23 +179,33 @@ void handleEvents(bool &running, GameState& game)
                     {
                         b.editingBuffer.pop_back();
                     }
-                    else if (e.key.keysym.sym == SDLK_MINUS)
-                    {
-                        if (b.editingBuffer.empty() || b.editingBuffer[0] != '-')
-                            b.editingBuffer += '-';
-                    }
-                    else if (e.key.keysym.sym == SDLK_PERIOD)
-                    {
-                        // فقط یک نقطه مجازه
-                        if (b.editingBuffer.find('.') == string::npos)
-                            b.editingBuffer += '.';
-                    }
                     else
                     {
                         char c = e.key.keysym.sym;
-                        if (c >= '0' && c <= '9')
+
+                        // تشخیص نوع فیلد (عددی یا متنی)
+                        bool isTextField = false;
+
+                        if ((b.type == SAY_FOR || b.type == THINK_FOR) && b.editingField == 0)
+                            isTextField = true;
+                        else if ((b.type == SAY || b.type == THINK) && b.editingField == 0)
+                            isTextField = true;
+
+                        if (isTextField)
                         {
-                            b.editingBuffer += c;
+                            // فیلد متنی - همه کاراکترهای قابل چاپ
+                            if (c >= 32 && c <= 126)
+                                b.editingBuffer += c;
+                        }
+                        else
+                        {
+                            // فیلد عددی
+                            if (c >= '0' && c <= '9')
+                                b.editingBuffer += c;
+                            else if (c == '.' && b.editingBuffer.find('.') == string::npos)
+                                b.editingBuffer += '.';
+                            else if (c == '-' && (b.editingBuffer.empty() || b.editingBuffer == "-"))
+                                b.editingBuffer += '-';
                         }
                     }
                     break;
@@ -125,7 +213,7 @@ void handleEvents(bool &running, GameState& game)
             }
 
             // اگه ویرایش مربوط به بلوک نبود، برو سراغ ویرایش اسپرایت
-            if (!blockEditing && game.editingMode && e.type == SDL_KEYDOWN)
+            if (!blockEditing && game.editingMode)
             {
                 if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER)
                 {
@@ -133,7 +221,7 @@ void handleEvents(bool &running, GameState& game)
                     if (game.editingField == 0)  // نام
                     {
                         if (!game.editingBuffer.empty())
-                            game.player.message = game.editingBuffer;
+                            game.player.name = game.editingBuffer;
                     }
                     else if (game.editingField == 1)  // x
                     {
@@ -146,12 +234,20 @@ void handleEvents(bool &running, GameState& game)
                     else if (game.editingField == 3)  // size
                     {
                         int newSize = stoi(game.editingBuffer);
+                        if (newSize < 5) newSize = 5;
                         game.player.w = newSize;
                         game.player.h = newSize;
                     }
                     else if (game.editingField == 4)  // direction
                     {
                         game.player.direction = stod(game.editingBuffer);
+                    }
+                    else if (game.editingField == 5)  // volume
+                    {
+                        int newVolume = stoi(game.editingBuffer);
+                        if (newVolume < 0) newVolume = 0;
+                        if (newVolume > 100) newVolume = 100;
+                        game.volume = newVolume;
                     }
 
                     game.editingMode = false;
@@ -168,20 +264,24 @@ void handleEvents(bool &running, GameState& game)
                 {
                     game.editingBuffer.pop_back();
                 }
-                else if (e.key.keysym.sym == SDLK_MINUS)
-                {
-                    game.editingBuffer += '-';
-                }
-                else if (e.key.keysym.sym == SDLK_PERIOD)
-                {
-                    game.editingBuffer += '.';
-                }
                 else
                 {
                     char c = e.key.keysym.sym;
-                    if ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || c == ' ')
+
+                    if (game.editingField == 0)  // نام - همه کاراکترها
                     {
-                        game.editingBuffer += c;
+                        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
+                            (c >= '0' && c <= '9') || c == ' ' || c == '_')
+                            game.editingBuffer += c;
+                    }
+                    else  // سایر فیلدها - فقط عددی
+                    {
+                        if (c >= '0' && c <= '9')
+                            game.editingBuffer += c;
+                        else if (c == '.' && game.editingBuffer.find('.') == string::npos)
+                            game.editingBuffer += '.';
+                        else if (c == '-' && game.editingBuffer.empty())
+                            game.editingBuffer += '-';
                     }
                 }
             }
@@ -193,10 +293,35 @@ void handleEvents(bool &running, GameState& game)
             int mx = e.button.x;
             int my = e.button.y;
 
-            if (mx >= game.player.x && mx <= game.player.x + game.player.w &&
-                my >= game.player.y && my <= game.player.y + game.player.h)
+            // ===== محاسبه مختصات استیج =====
+            int categoriesPanelWidth = 180;
+            int examplesPanelX = categoriesPanelWidth + 30;
+            int examplesPanelWidth = 250;
+            int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
+            int codeAreaWidth = 600;
+            int stagePanelX = codeAreaX + codeAreaWidth + 10;
+            int stagePanelWidth = game.screenWidth - stagePanelX - 5;
+            if (stagePanelWidth > 500) stagePanelWidth = 500;
+
+            int stageX = stagePanelX + 5;
+            int stageY = 70;
+            int stageWidth = stagePanelWidth - 20;
+            int stageHeight = 300;
+
+            // ===== تشخیص کلیک روی اسپرایت برای Drag =====
+            // تبدیل مختصات اسپرایت به مختصات داخل استیج
+            double playerScreenX = stageX + (game.player.x * stageWidth / game.screenWidth);
+            double playerScreenY = stageY + (game.player.y * stageHeight / game.screenHeight);
+            double playerScreenW = game.player.w * stageWidth / game.screenWidth;
+            double playerScreenH = game.player.h * stageHeight / game.screenHeight;
+
+            if (mx >= playerScreenX && mx <= playerScreenX + playerScreenW &&
+                my >= playerScreenY && my <= playerScreenY + playerScreenH)
             {
                 game.spriteClicked = true;
+                game.isDragging = true;
+                game.dragOffsetX = mx - playerScreenX;
+                game.dragOffsetY = my - playerScreenY;
             }
 
             // ریست وضعیت دکمه‌ها
@@ -243,7 +368,6 @@ void handleEvents(bool &running, GameState& game)
                 game.isShowingMessage = false;
                 game.repeatCountStack.clear();
                 game.repeatStartStack.clear();
-                // game.player.message = "";  // این خط رو کامنت کردم تا اسم اسپرایت پاک نشه
             }
 
             // ===== دکمه Pause =====
@@ -278,7 +402,6 @@ void handleEvents(bool &running, GameState& game)
                 game.repeatStartStack.clear();
                 game.player.x = game.screenWidth / 2 - game.player.w / 2;
                 game.player.y = game.screenHeight / 2 - game.player.h / 2;
-                // game.player.message = "";  // اسم اسپرایت رو پاک نکن
                 game.player.isThinking = false;
                 game.penX1.clear();
                 game.penY1.clear();
@@ -307,13 +430,11 @@ void handleEvents(bool &running, GameState& game)
             }
 
             // ===== دکمه‌های دسته‌بندی =====
-            int categoriesPanelWidth = 180;
             if (mx >= game.moveCategoryBtn.x && mx <= game.moveCategoryBtn.x + game.moveCategoryBtn.w &&
                 my >= game.moveCategoryBtn.y && my <= game.moveCategoryBtn.y + game.moveCategoryBtn.h)
             {
                 game.moveCategoryBtn.isPressed = true;
                 game.currentCategory = 0;
-                cout << "Move category selected" << endl;
             }
 
             if (mx >= game.looksCategoryBtn.x && mx <= game.looksCategoryBtn.x + game.looksCategoryBtn.w &&
@@ -321,7 +442,6 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.looksCategoryBtn.isPressed = true;
                 game.currentCategory = 1;
-                cout << "Looks category selected" << endl;
             }
 
             if (mx >= game.soundCategoryBtn.x && mx <= game.soundCategoryBtn.x + game.soundCategoryBtn.w &&
@@ -329,7 +449,6 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.soundCategoryBtn.isPressed = true;
                 game.currentCategory = 2;
-                cout << "Sound category selected" << endl;
             }
 
             if (mx >= game.eventsCategoryBtn.x && mx <= game.eventsCategoryBtn.x + game.eventsCategoryBtn.w &&
@@ -337,7 +456,6 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.eventsCategoryBtn.isPressed = true;
                 game.currentCategory = 3;
-                cout << "Events category selected" << endl;
             }
 
             if (mx >= game.controlCategoryBtn.x && mx <= game.controlCategoryBtn.x + game.controlCategoryBtn.w &&
@@ -345,7 +463,6 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.controlCategoryBtn.isPressed = true;
                 game.currentCategory = 4;
-                cout << "Control category selected" << endl;
             }
 
             if (mx >= game.sensingCategoryBtn.x && mx <= game.sensingCategoryBtn.x + game.sensingCategoryBtn.w &&
@@ -353,7 +470,6 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.sensingCategoryBtn.isPressed = true;
                 game.currentCategory = 5;
-                cout << "Sensing category selected" << endl;
             }
 
             if (mx >= game.operatorsCategoryBtn.x && mx <= game.operatorsCategoryBtn.x + game.operatorsCategoryBtn.w &&
@@ -361,7 +477,6 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.operatorsCategoryBtn.isPressed = true;
                 game.currentCategory = 6;
-                cout << "Operators category selected" << endl;
             }
 
             if (mx >= game.variablesCategoryBtn.x && mx <= game.variablesCategoryBtn.x + game.variablesCategoryBtn.w &&
@@ -369,12 +484,9 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.variablesCategoryBtn.isPressed = true;
                 game.currentCategory = 7;
-                cout << "Variables category selected" << endl;
             }
 
             // ===== تشخیص کلیک روی بلوک‌های مثال =====
-            int examplesPanelX = categoriesPanelWidth + 30;
-            int examplesPanelWidth = 250;
             int exampleBlockStartY = 110;
             int blockCount = 0;
 
@@ -395,8 +507,6 @@ void handleEvents(bool &running, GameState& game)
                 if (mx >= blockRect.x && mx <= blockRect.x + blockRect.w &&
                     my >= blockRect.y && my <= blockRect.y + blockRect.h)
                 {
-                    cout << "Example block " << i << " clicked in category " << game.currentCategory << endl;
-
                     // ساختن بلوک جدید
                     Block newBlock;
                     string blockName;
@@ -405,10 +515,10 @@ void handleEvents(bool &running, GameState& game)
                     {
                         if (i == 0) { newBlock.type = MOVE_UP; blockName = "move 10 steps"; newBlock.parameters.push_back(Value(10.0)); }
                         else if (i == 1) { newBlock.type = TURN_RIGHT; blockName = "turn 15 degrees"; newBlock.parameters.push_back(Value(15.0)); }
-                        else if (i == 2) { newBlock.type = TURN_LEFT; blockName = "turn -15 degrees"; newBlock.parameters.push_back(Value(-15.0)); }
+                        else if (i == 2) { newBlock.type = TURN_LEFT; blockName = "turn -15 degrees"; newBlock.parameters.push_back(Value(15.0)); }
                         else if (i == 3) { newBlock.type = GOTO_XY; blockName = "go to x: y:"; newBlock.parameters.push_back(Value(100.0)); newBlock.parameters.push_back(Value(100.0)); }
                         else if (i == 4) { newBlock.type = GOTO_MOUSE; blockName = "go to mouse-pointer"; }
-                        else if (i == 5) { newBlock.type = WAIT; blockName = "glide 1 secs"; newBlock.parameters.push_back(Value(1.0)); }
+                        else if (i == 5) { newBlock.type = GOTO_RANDOM; blockName = "go to random position"; newBlock.parameters.push_back(Value(1.0)); }
                         else if (i == 6) { newBlock.type = CHANGE_X; blockName = "change x by 10"; newBlock.parameters.push_back(Value(10.0)); }
                         else if (i == 7) { newBlock.type = SET_X; blockName = "set x to 0"; newBlock.parameters.push_back(Value(0.0)); }
                         else if (i == 8) { newBlock.type = CHANGE_Y; blockName = "change y by 10"; newBlock.parameters.push_back(Value(10.0)); }
@@ -427,9 +537,11 @@ void handleEvents(bool &running, GameState& game)
                     }
                     else if (game.currentCategory == 2)  // صدا
                     {
-                        newBlock.type = WAIT;
-                        blockName = "sound block";
-                        newBlock.parameters.push_back(Value(1.0));
+                        if (i == 0) { newBlock.type = PLAY_SOUND; blockName = "play sound Meow"; newBlock.parameters.push_back(Value(string("Meow"))); }
+                        else if (i == 1) { newBlock.type = PLAY_SOUND_UNTIL_DONE; blockName = "play sound Meow until done"; newBlock.parameters.push_back(Value(string("Meow"))); }
+                        else if (i == 2) { newBlock.type = STOP_ALL_SOUNDS; blockName = "stop all sounds"; }
+                        else if (i == 3) { newBlock.type = CHANGE_VOLUME; blockName = "change volume by 10"; newBlock.parameters.push_back(Value(10.0)); }
+                        else if (i == 4) { newBlock.type = SET_VOLUME; blockName = "set volume to 100 %"; newBlock.parameters.push_back(Value(100.0)); }
                     }
                     else if (game.currentCategory == 3)  // رویدادها
                     {
@@ -485,14 +597,10 @@ void handleEvents(bool &running, GameState& game)
                     newBlock.eventName = blockName;
 
                     game.program.push_back(newBlock);
-                    cout << "Block added to program. Total blocks: " << game.program.size() << endl;
                 }
             }
 
             // ===== تشخیص کلیک روی بلوک‌های Code Area (برای ویرایش) =====
-            int codeAreaX = examplesPanelX + examplesPanelWidth + 20;
-            int codeAreaWidth = 600;
-
             for (int i = 0; i < game.program.size() && i < 20; i++)
             {
                 int blockY = 100 + i * 45;
@@ -517,12 +625,10 @@ void handleEvents(bool &running, GameState& game)
 
                     // مختصات کلیک رو نسبت به بلوک حساب کن
                     int localX = mx - blockRect.x;
-                    int textStartX = 5;
 
                     // تشخیص نوع بلوک و فیلد قابل ویرایش
                     if (b.type == GOTO_XY && b.parameters.size() >= 2)
                     {
-                        // پارامتر اول (x) در سمت چپ
                         if (localX < 70)
                         {
                             b.editingMode = true;
@@ -531,7 +637,6 @@ void handleEvents(bool &running, GameState& game)
                             sprintf(buffer, "%.1f", b.parameters[0].asNumber());
                             b.editingBuffer = buffer;
                         }
-                            // پارامتر دوم (y) در سمت راست
                         else if (localX > 100)
                         {
                             b.editingMode = true;
@@ -540,6 +645,29 @@ void handleEvents(bool &running, GameState& game)
                             sprintf(buffer, "%.1f", b.parameters[1].asNumber());
                             b.editingBuffer = buffer;
                         }
+                    }
+                    else if ((b.type == SAY_FOR || b.type == THINK_FOR) && b.parameters.size() >= 2)
+                    {
+                        if (localX < 100)
+                        {
+                            b.editingMode = true;
+                            b.editingField = 0;
+                            b.editingBuffer = b.parameters[0].asString();
+                        }
+                        else if (localX > 120)
+                        {
+                            b.editingMode = true;
+                            b.editingField = 1;
+                            char buffer[50];
+                            sprintf(buffer, "%.1f", b.parameters[1].asNumber());
+                            b.editingBuffer = buffer;
+                        }
+                    }
+                    else if ((b.type == SAY || b.type == THINK) && !b.parameters.empty())
+                    {
+                        b.editingMode = true;
+                        b.editingField = 0;
+                        b.editingBuffer = b.parameters[0].asString();
                     }
                     else if ((b.type == MOVE_UP || b.type == MOVE_DOWN ||
                               b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
@@ -563,15 +691,20 @@ void handleEvents(bool &running, GameState& game)
                         sprintf(buffer, "%d", (int)b.parameters[0].asNumber());
                         b.editingBuffer = buffer;
                     }
+                    else if (b.type == CHANGE_VOLUME || b.type == SET_VOLUME)
+                    {
+                        b.editingMode = true;
+                        b.editingField = 0;
+                        char buffer[50];
+                        sprintf(buffer, "%d", (int)b.parameters[0].asNumber());
+                        b.editingBuffer = buffer;
+                    }
                 }
             }
 
             // ===== تشخیص کلیک روی مشخصات اسپرایت =====
-            int stagePanelX = codeAreaX + codeAreaWidth + 10;
-            int stagePanelWidth = game.screenWidth - stagePanelX - 5;
-            int stageWidth = stagePanelWidth - 20;
-            int stageHeight = 300;
-            SDL_Rect stage = {stagePanelX + 5, 70, stageWidth, stageHeight};
+
+            SDL_Rect stage = {stageX, stageY, stageWidth, stageHeight};  // این خط رو اضافه کن
 
             int spritePanelY = stage.y + stage.h + 10;
             SDL_Rect spritePanel = {stagePanelX + 5, spritePanelY, stageWidth, 150};
@@ -587,7 +720,7 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.editingMode = true;
                 game.editingField = 0;
-                game.editingBuffer = game.player.message.empty() ? "Sprite1" : game.player.message;
+                game.editingBuffer = game.player.name;
             }
 
             // کلیک روی X
@@ -645,6 +778,18 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.player.visible = !game.player.visible;
             }
+
+            // کلیک روی Volume
+            SDL_Rect volumeRect = {textX, textY + lineHeight * 5, 100, 18};
+            if (mx >= volumeRect.x && mx <= volumeRect.x + volumeRect.w &&
+                my >= volumeRect.y && my <= volumeRect.y + volumeRect.h)
+            {
+                game.editingMode = true;
+                game.editingField = 5;
+                char buffer[50];
+                sprintf(buffer, "%d", game.volume);
+                game.editingBuffer = buffer;
+            }
         }
 
         // ===== تشخیص کلیک راست روی بلوک‌های Code Area =====
@@ -668,7 +813,6 @@ void handleEvents(bool &running, GameState& game)
                     my >= blockRect.y && my <= blockRect.y + blockRect.h)
                 {
                     game.program.erase(game.program.begin() + i);
-                    cout << "Block " << i << " removed. Total blocks: " << game.program.size() << endl;
                     break;
                 }
             }
@@ -678,6 +822,7 @@ void handleEvents(bool &running, GameState& game)
         {
             game.mousePressed = false;
             game.spriteClicked = false;
+            game.isDragging = false;
 
             game.runButton.isPressed = false;
             game.pauseButton.isPressed = false;
@@ -786,6 +931,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     // لوگو
     filledCircleRGBA(renderer, 40, 30, 20, 255, 255, 255, 255);
     SDL_Color white = {255,255,255,255};
+
     renderText(renderer, "Scratch", 70, 20, white);
 
     // وضعیت اجرا
@@ -865,7 +1011,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     if (game.currentCategory == 0)  // حرکت
     {
         const char* moveBlocks[] = {"move 10 steps", "turn 15 degrees", "turn -15 degrees",
-                                    "go to x: y:", "go to mouse-pointer", "glide 1 secs",
+                                    "go to x: y:", "go to mouse-pointer", "go to random position",
                                     "change x by 10", "set x to 0", "change y by 10", "set y to 0"};
         int numBlocks = 10;
         for (int i = 0; i < numBlocks && i < maxBlocks; i++)
@@ -902,7 +1048,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     }
     else if (game.currentCategory == 2)  // صدا
     {
-        const char* soundBlocks[] = {"play sound Meow", "play sound until done",
+        const char* soundBlocks[] = {"play sound Meow", "play sound Meow until done",
                                      "stop all sounds", "change volume by 10",
                                      "set volume to 100 %"};
         int numBlocks = 5;
@@ -911,7 +1057,7 @@ void render(SDL_Renderer* renderer, GameState& game)
             int blockY = exampleBlockStartY + i * 45;
             SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
 
-            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255);
+            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255); // بنفش
             SDL_RenderFillRect(renderer, &blockRect);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderDrawRect(renderer, &blockRect);
@@ -1028,6 +1174,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     renderText(renderer, "Code Area", codeArea.x + 10, codeArea.y + 5, black);
 
     // نمایش بلوک‌های برنامه در فضای کدنویسی
+    // نمایش بلوک‌های برنامه در فضای کدنویسی
     for (int i = 0; i < game.program.size() && i < 20; i++)
     {
         int blockY = codeArea.y + 30 + i * 45;
@@ -1035,145 +1182,206 @@ void render(SDL_Renderer* renderer, GameState& game)
 
         BlockType type = game.program[i].type;
 
-        // رنگ‌بندی بلوک‌ها
+        // ===== رنگ‌بندی بلوک‌ها بر اساس دسته =====
         if (type >= MOVE_UP && type <= MOVE_RIGHT)
-            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255);
+            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255); // آبی حرکتی
+        else if (type >= TURN_RIGHT && type <= GOTO_MOUSE)
+            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255); // آبی حرکتی
         else if (type >= REPEAT && type <= WAIT)
-            SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);
+            SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255); // نارنجی کنترلی
         else if (type >= OP_ADD && type <= OP_XOR)
-            SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255);
+            SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255); // سبز عملگرها
         else if (type >= SAY && type <= THINK_FOR)
-            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
+            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255); // نیلی ظاهری
+        else if (type >= SHOW && type <= SET_SIZE)
+            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255); // نیلی ظاهری
         else if (type >= WHEN_GREEN_FLAG && type <= WHEN_BROADCAST)
-            SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255);
+            SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255); // زرد رویدادها
         else if (type >= SET_VARIABLE && type <= HIDE_VARIABLE)
-            SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255);
+            SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255); // نارنجی پررنگ متغیرها
+        else if (type >= TOUCHING_MOUSE && type <= RESET_TIMER)
+            SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255); // فیروزه‌ای حسگر
+        else if (type >= PEN_DOWN && type <= CHANGE_PEN_SIZE)
+            SDL_SetRenderDrawColor(renderer, 50, 200, 150, 255); // سبز روشن قلم
+        else if (type >= PLAY_SOUND && type <= SET_VOLUME)
+            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255); // بنفش صدا
         else
-            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255); // خاکستری
 
         SDL_RenderFillRect(renderer, &blockRect);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
         SDL_RenderDrawRect(renderer, &blockRect);
 
-        // نمایش متن بلوک با قابلیت ویرایش
+        // ===== نمایش متن بلوک =====
         string blockText;
-        SDL_Color blue = {0, 0, 255, 255};
         SDL_Color textColor = black;
 
-        if (game.program[i].editingMode)
-        {
-            textColor = blue;
-        }
+        SDL_Color blue = {0, 0, 255, 255};
+        SDL_Color red = {255, 0, 0, 255};
 
+        if (game.program[i].editingMode)
+            textColor = blue;
+
+        // تشخیص نوع بلوک و ساختن متن مناسب
         if (type == GOTO_XY && game.program[i].parameters.size() >= 2)
         {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = "go to x: " + game.program[i].editingBuffer + "_ y: " +
-                            to_string((int)game.program[i].parameters[1].asNumber());
-            }
-            else if (game.program[i].editingMode && game.program[i].editingField == 1)
-            {
-                blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
-                            " y: " + game.program[i].editingBuffer + "_";
-            }
-            else
-            {
-                blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
-                            " y: " + to_string((int)game.program[i].parameters[1].asNumber());
-            }
+            blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
+                        " y: " + to_string((int)game.program[i].parameters[1].asNumber());
         }
-        else if ((type == MOVE_UP || type == MOVE_DOWN || type == MOVE_LEFT || type == MOVE_RIGHT) &&
-                 !game.program[i].parameters.empty())
+        else if (type == GOTO_MOUSE)
         {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = "move " + game.program[i].editingBuffer + "_ steps";
-            }
-            else
-            {
+            blockText = "go to mouse-pointer";
+        }
+        else if (type == GOTO_RANDOM)
+        {
+            blockText = "go to random position";
+        }
+        else if (type == MOVE_UP || type == MOVE_DOWN || type == MOVE_LEFT || type == MOVE_RIGHT)
+        {
+            if (!game.program[i].parameters.empty())
                 blockText = "move " + to_string((int)game.program[i].parameters[0].asNumber()) + " steps";
-            }
-        }
-        else if ((type == TURN_RIGHT || type == TURN_LEFT) && !game.program[i].parameters.empty())
-        {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = (type == TURN_RIGHT ? "turn " : "turn ") +
-                            game.program[i].editingBuffer + "_ degrees";
-            }
             else
-            {
-                blockText = (type == TURN_RIGHT ? "turn " : "turn ") +
-                            to_string((int)game.program[i].parameters[0].asNumber()) + " degrees";
-            }
+                blockText = "move 10 steps";
         }
-        else if ((type == CHANGE_X || type == CHANGE_Y) && !game.program[i].parameters.empty())
+        else if (type == TURN_RIGHT || type == TURN_LEFT)
         {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = (type == CHANGE_X ? "change x by " : "change y by ") +
-                            game.program[i].editingBuffer + "_";
-            }
+            if (!game.program[i].parameters.empty())
+                blockText = "turn " + to_string((int)game.program[i].parameters[0].asNumber()) + " degrees";
             else
-            {
+                blockText = "turn 15 degrees";
+        }
+        else if (type == CHANGE_X || type == CHANGE_Y)
+        {
+            if (!game.program[i].parameters.empty())
                 blockText = (type == CHANGE_X ? "change x by " : "change y by ") +
                             to_string((int)game.program[i].parameters[0].asNumber());
-            }
         }
-        else if ((type == SET_X || type == SET_Y) && !game.program[i].parameters.empty())
+        else if (type == SET_X || type == SET_Y)
         {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = (type == SET_X ? "set x to " : "set y to ") +
-                            game.program[i].editingBuffer + "_";
-            }
-            else
-            {
+            if (!game.program[i].parameters.empty())
                 blockText = (type == SET_X ? "set x to " : "set y to ") +
                             to_string((int)game.program[i].parameters[0].asNumber());
-            }
-        }
-        else if (type == CHANGE_SIZE && !game.program[i].parameters.empty())
-        {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = "change size by " + game.program[i].editingBuffer + "_";
-            }
-            else
-            {
-                blockText = "change size by " + to_string((int)game.program[i].parameters[0].asNumber());
-            }
-        }
-        else if (type == SET_SIZE && !game.program[i].parameters.empty())
-        {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
-            {
-                blockText = "set size to " + game.program[i].editingBuffer + "_ %";
-            }
-            else
-            {
-                blockText = "set size to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
-            }
         }
         else if (type == WAIT && !game.program[i].parameters.empty())
         {
-            if (game.program[i].editingMode && game.program[i].editingField == 0)
+            char buffer[50];
+            sprintf(buffer, "wait %.1f seconds", game.program[i].parameters[0].asNumber());
+            blockText = buffer;
+        }
+        else if (type == REPEAT)
+        {
+            blockText = "repeat " + to_string(game.program[i].repeatCount);
+        }
+        else if (type == FOREVER)
+        {
+            blockText = "forever";
+        }
+        else if (type == WHEN_GREEN_FLAG)
+        {
+            blockText = "when flag clicked";
+        }
+        else if (type == WHEN_KEY_PRESSED)
+        {
+            blockText = "when key pressed";
+        }
+        else if (type == WHEN_SPRITE_CLICKED)
+        {
+            blockText = "when sprite clicked";
+        }
+        else if (type == SAY_FOR || type == THINK_FOR)
+        {
+            if (game.program[i].parameters.size() >= 2)
             {
-                blockText = "wait " + game.program[i].editingBuffer + "_ seconds";
+                blockText = (type == SAY_FOR ? "say " : "think ") +
+                            game.program[i].parameters[0].asString() +
+                            " for " + to_string((int)game.program[i].parameters[1].asNumber()) + " secs";
             }
-            else
-            {
-                blockText = "wait " + to_string(game.program[i].parameters[0].asNumber()) + " seconds";
-            }
+        }
+        else if (type == SAY || type == THINK)
+        {
+            if (!game.program[i].parameters.empty())
+                blockText = (type == SAY ? "say " : "think ") + game.program[i].parameters[0].asString();
+        }
+        else if (type == SHOW)
+        {
+            blockText = "show";
+        }
+        else if (type == HIDE)
+        {
+            blockText = "hide";
+        }
+        else if (type == CHANGE_SIZE)
+        {
+            if (!game.program[i].parameters.empty())
+                blockText = "change size by " + to_string((int)game.program[i].parameters[0].asNumber());
+        }
+        else if (type == SET_SIZE)
+        {
+            if (!game.program[i].parameters.empty())
+                blockText = "set size to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
+        }
+        else if (type == PLAY_SOUND)
+        {
+            blockText = "play sound Meow";
+        }
+        else if (type == PLAY_SOUND_UNTIL_DONE)
+        {
+            blockText = "play sound Meow until done";
+        }
+        else if (type == STOP_ALL_SOUNDS)
+        {
+            blockText = "stop all sounds";
+        }
+        else if (type == CHANGE_VOLUME)
+        {
+            if (!game.program[i].parameters.empty())
+                blockText = "change volume by " + to_string((int)game.program[i].parameters[0].asNumber());
+        }
+        else if (type == SET_VOLUME)
+        {
+            if (!game.program[i].parameters.empty())
+                blockText = "set volume to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
+        }
+        else if (type == PEN_DOWN)
+        {
+            blockText = "pen down";
+        }
+        else if (type == PEN_UP)
+        {
+            blockText = "pen up";
+        }
+        else if (type == PEN_CLEAR)
+        {
+            blockText = "clear";
+        }
+        else if (type >= OP_ADD && type <= OP_XOR)
+        {
+            // برای عملگرها
+            if (type == OP_ADD) blockText = "0 + 0";
+            else if (type == OP_SUBTRACT) blockText = "0 - 0";
+            else if (type == OP_MULTIPLY) blockText = "0 * 0";
+            else if (type == OP_DIVIDE) blockText = "0 / 0";
+            else if (type == OP_EQUAL) blockText = "0 = 0";
+            else if (type == OP_LESS_THAN) blockText = "0 < 0";
+            else if (type == OP_GREATER_THAN) blockText = "0 > 0";
+            else if (type == OP_NOT) blockText = "not";
+            else if (type == OP_OR) blockText = "or";
+            else if (type == OP_AND) blockText = "and";
+            else blockText = "operator";
+        }
+        else if (type == SET_VARIABLE)
+        {
+            blockText = "set " + game.program[i].variableName + " to 0";
         }
         else
         {
-            blockText = game.program[i].eventName.empty() ? "Block " + to_string(i+1) : game.program[i].eventName;
+            // اگه هیچکدوم نبود، از eventName استفاده کن
+            blockText = game.program[i].eventName.empty() ? "Block" : game.program[i].eventName;
         }
 
         renderText(renderer, blockText.c_str(), blockRect.x + 5, blockRect.y + 10, textColor);
 
+        // اگه بلوک جاری در حال اجراست، حاشیه زرد
         if (i == game.currentBlockIndex && game.isRunningCode)
         {
             SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
@@ -1211,9 +1419,9 @@ void render(SDL_Renderer* renderer, GameState& game)
 
         SDL_Rect spriteRect = {spriteStageX, spriteStageY, game.player.w/2, game.player.h/2};
 
+        // کشیدن اسپرایت
         if (game.player.texture)
         {
-            // محاسبه مرکز اسپرایت برای چرخش
             SDL_Point center = {spriteRect.w/2, spriteRect.h/2};
             double angle = game.player.direction;
             SDL_RenderCopyEx(renderer, game.player.texture, NULL, &spriteRect, angle, &center, SDL_FLIP_NONE);
@@ -1224,21 +1432,94 @@ void render(SDL_Renderer* renderer, GameState& game)
             SDL_RenderFillRect(renderer, &spriteRect);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderDrawRect(renderer, &spriteRect);
-
-            // یه خط کوچیک جهت رو نشون بده
-            int centerX = spriteRect.x + spriteRect.w/2;
-            int centerY = spriteRect.y + spriteRect.h/2;
-            int lineX = centerX + (int)(spriteRect.w/2 * cos(game.player.direction * M_PI / 180));
-            int lineY = centerY - (int)(spriteRect.h/2 * sin(game.player.direction * M_PI / 180));
-            SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
-            SDL_RenderDrawLine(renderer, centerX, centerY, lineX, lineY);
         }
 
-        // نمایش نام بالای اسپرایت
-        string spriteName = game.player.message.empty() ? "Sprite1" : game.player.message;
+        // ===== نمایش نام اسپرایت (با فاصله 15 پیکسل از اسپرایت) =====
+        string spriteName = game.player.name;
         int nameX = spriteStageX + (game.player.w/4) - (spriteName.length() * 4);
-        int nameY = spriteStageY - 20;
+        int nameY = spriteStageY - 15;  // 15 پیکسل فاصله از بالای اسپرایت
         renderText(renderer, spriteName.c_str(), nameX, nameY, black);
+
+        // ===== نمایش حباب گفتگو یا فکر (بالاتر از اسم) =====
+        if (!game.player.message.empty())
+        {
+            int bubbleWidth = 150;
+            int bubbleHeight = 50;
+            int bubbleX = spriteStageX + (game.player.w/4) - bubbleWidth/2;
+            int bubbleY = nameY - bubbleHeight - 20;  // 20 پیکسل فاصله از اسم
+
+            // محدود کردن به داخل استیج
+            if (bubbleX < stage.x) bubbleX = stage.x;
+            if (bubbleX + bubbleWidth > stage.x + stage.w)
+                bubbleX = stage.x + stage.w - bubbleWidth;
+            if (bubbleY < stage.y) bubbleY = stage.y + 5;  // اگه از استیج بیرون زد
+
+            SDL_Rect bubbleRect = {bubbleX, bubbleY, bubbleWidth, bubbleHeight};
+
+            // رنگ حباب
+            if (game.player.isThinking)
+            {
+                // حباب فکر (خاکستری روشن با حاشیه نقطه‌چین)
+                SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
+                SDL_RenderFillRect(renderer, &bubbleRect);
+                SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+
+                // رسم حاشیه نقطه‌چین برای فکر
+                for (int i = 0; i < bubbleRect.w; i += 5)
+                {
+                    SDL_RenderDrawPoint(renderer, bubbleRect.x + i, bubbleRect.y);
+                    SDL_RenderDrawPoint(renderer, bubbleRect.x + i, bubbleRect.y + bubbleRect.h);
+                }
+                for (int i = 0; i < bubbleRect.h; i += 5)
+                {
+                    SDL_RenderDrawPoint(renderer, bubbleRect.x, bubbleRect.y + i);
+                    SDL_RenderDrawPoint(renderer, bubbleRect.x + bubbleRect.w, bubbleRect.y + i);
+                }
+            }
+            else
+            {
+                // حباب گفتگو (سفید با حاشیه سیاه)
+                SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+                SDL_RenderFillRect(renderer, &bubbleRect);
+                SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+                SDL_RenderDrawRect(renderer, &bubbleRect);
+            }
+
+            // نمایش متن داخل حباب
+            string message = game.player.message;
+            // اگه متن طولانی بود، می‌تونی برش بزنی
+            if (message.length() > 20)
+                message = message.substr(0, 17) + "...";
+
+            int textX = bubbleX + (bubbleWidth - message.length() * 8) / 2;
+            int textY = bubbleY + (bubbleHeight - 16) / 2;
+            renderText(renderer, message.c_str(), textX, textY, black);
+
+            // ===== دم حباب =====
+            if (game.player.isThinking)
+            {
+                // دم حباب فکر (سه دایره)
+                int circleX = spriteStageX + game.player.w/4;
+                int circleY = bubbleY + bubbleHeight + 5;
+
+                filledCircleRGBA(renderer, circleX - 15, circleY, 5, 220, 220, 220, 255);
+                filledCircleRGBA(renderer, circleX, circleY + 5, 5, 220, 220, 220, 255);
+                filledCircleRGBA(renderer, circleX + 15, circleY + 10, 5, 220, 220, 220, 255);
+            }
+            else
+            {
+                // دم حباب گفتگو (مثلث)
+                int x1 = spriteStageX + game.player.w/4;
+                int y1 = bubbleY + bubbleHeight;
+                int x2 = x1 - 10;
+                int y2 = y1 + 10;
+                int x3 = x1 + 10;
+                int y3 = y1 + 10;
+
+                filledTrigonRGBA(renderer, x1, y1, x2, y2, x3, y3, 255, 255, 255, 255);
+                aatrigonRGBA(renderer, x1, y1, x2, y2, x3, y3, 0, 0, 0, 255);
+            }
+        }
 
         if (game.player.penDown)
         {
@@ -1277,7 +1558,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_Color blue = {0, 0, 255, 255};
     SDL_Color red = {255, 0, 0, 255};
 
-    // اسم
+// اسم
     if (game.editingMode && game.editingField == 0)
     {
         string displayText = "Name: " + game.editingBuffer + "_";
@@ -1285,7 +1566,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     }
     else
     {
-        string nameText = "Name: " + (game.player.message.empty() ? "Sprite1" : game.player.message);
+        string nameText = "Name: " + game.player.name;
         renderText(renderer, nameText.c_str(), textX, textY, black);
     }
 
@@ -1337,12 +1618,35 @@ void render(SDL_Renderer* renderer, GameState& game)
         renderText(renderer, buffer, textX, textY + lineHeight * 3, black);
     }
 
+    // Volume
+    if (game.editingMode && game.editingField == 5)
+    {
+        sprintf(buffer, "Volume: %s_ %%", game.editingBuffer.c_str());
+        renderText(renderer, buffer, textX, textY + lineHeight * 5, blue);
+    }
+    else
+    {
+        sprintf(buffer, "Volume: %d %%", game.volume);
+        renderText(renderer, buffer, textX, textY + lineHeight * 5, black);
+    }
+
     // Visible
     string visibleText = game.player.visible ? "Visible: Yes" : "Visible: No";
     renderText(renderer, visibleText.c_str(), textX, textY + lineHeight * 4, game.player.visible ? black : red);
 
-    // راهنما
-    renderText(renderer, "Click on any value to edit", spritePanel.x + 10, spritePanel.y + spritePanel.h - 20, black);
+// ===== وضعیت صدا - اضافه شده =====
+//    char volumeBuffer[50];
+//    sprintf(volumeBuffer, "Volume: %d%%", game.volume);
+//    renderText(renderer, volumeBuffer, textX, textY + lineHeight * 5, black);
+
+    if (game.isPlayingSound)
+    {
+//        string soundText = "Playing: " + game.currentSound;
+//        renderText(renderer, soundText.c_str(), textX, textY + lineHeight * 6, black);
+    }
+
+// راهنما (با یه کمی پایینتر)
+//    renderText(renderer, "Click on any value to edit", spritePanel.x + 10, spritePanel.y + spritePanel.h - 20, black);
 
     // ========== خطوط جداکننده ==========
     SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);

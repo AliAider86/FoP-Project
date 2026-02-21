@@ -5,6 +5,7 @@
 #include <string>
 #include <unordered_map>
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_mixer.h>
 #include "blocks.h"
 #include "value.h"
 
@@ -26,7 +27,8 @@ struct Sprite
     bool visible;
     double direction;
 
-    string message;
+    string message;     // متن حباب (برای SAY/THINK)
+    string name;        // اسم اسپرایت
     bool isThinking;
 
     // برای قلم
@@ -41,7 +43,7 @@ struct Sprite
     string imagePath;
 
     Sprite() : x(0), y(0), w(50), h(50), visible(true), direction(0),
-               message(""), isThinking(false), penDown(false), penSize(2),
+               message(""), name("Sprite1"), isThinking(false), penDown(false), penSize(2),
                penR(0), penG(0), penB(0), lastPenX(0), lastPenY(0), penMoved(false),
                texture(nullptr), imagePath("") {}
 };
@@ -127,6 +129,16 @@ struct GameState
     string editingBuffer;       // متن در حال ویرایش
     bool showSpriteName;        // نمایش نام اسپرایت بالای سرش
 
+    // برای صدا
+    int volume;
+    bool isPlayingSound;
+    Mix_Chunk* soundEffect;  // برای پخش صدا
+    int soundChannel;
+
+    bool isDragging;
+    int dragOffsetX;
+    int dragOffsetY;
+
     GameState() :
             currentBlockIndex(0),
             isRunningCode(false),
@@ -153,7 +165,14 @@ struct GameState
             placingBlock(false),
             editingMode(false),
             editingField(-1),
-            showSpriteName(true)
+            showSpriteName(true),
+            volume(100),
+            isPlayingSound(false),
+            soundEffect(nullptr),
+            soundChannel(-1),
+            isDragging(false),
+            dragOffsetX(0),
+            dragOffsetY(0)
     {
         for (int i = 0; i < SDL_NUM_SCANCODES; i++)
         {
