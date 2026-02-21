@@ -16,7 +16,9 @@ add_executable(FoP main.cpp
         ui.cpp
         value.h
         operators.h
-        looks.h)
+        looks.h
+        logger.h
+        logger.cpp)
 
 target_link_libraries(${PROJECT_NAME}
         -lmingw32

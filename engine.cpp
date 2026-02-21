@@ -4,15 +4,18 @@
 #include <sstream>
 #include "engine.h"
 #include "operators.h"
+#include "logger.h"
 
 using namespace std;
 
 void saveProject(const GameState& game, const string& filename)
 {
+    log_info(("Saving project to: " + filename).c_str());
+
     ofstream file(filename);
     if (!file.is_open())
     {
-        cout << "Error: Could not save file!" << endl;
+        log_error(("Could not save file: " + filename).c_str());
         return;
     }
 
@@ -50,15 +53,17 @@ void saveProject(const GameState& game, const string& filename)
     }
 
     file.close();
-    cout << "Project saved to " << filename << endl;
+    log_info(("Project saved to " + filename).c_str());
 }
 
 void loadProject(GameState& game, const string& filename)
 {
+    log_info(("Loading project from: " + filename).c_str());
+
     ifstream file(filename);
     if (!file.is_open())
     {
-        cout << "Error: Could not load file!" << endl;
+        log_error(("Could not load file: " + filename).c_str());
         return;
     }
 
@@ -150,12 +155,11 @@ void loadProject(GameState& game, const string& filename)
     }
 
     file.close();
-    cout << "Project loaded from " << filename << endl;
+    log_info(("Project loaded from " + filename).c_str());
 }
 
 void update(GameState& game)
 {
-//    cout << "Update called, isRunningCode = " << game.isRunningCode << endl;
     if (!game.isRunningCode)
         return;
 
@@ -163,17 +167,16 @@ void update(GameState& game)
     int safetyCounter = 0;
     const int MAX_OPERATIONS_PER_FRAME = 1000;
 
-// رویداد Green Flag
+    // رویداد Green Flag
     if (game.greenFlagPressed)
     {
+        log_info("Green flag pressed - starting program");
         game.greenFlagPressed = false;
 
-        // پاک کردن اسکریپت‌های قبلی
         game.scriptStartIndices.clear();
         game.scriptActive.clear();
         game.scriptCurrentBlock.clear();
 
-        // ایجاد یک اسکریپت که از اولین بلوک شروع میشه
         game.scriptStartIndices.push_back(0);
         game.scriptActive.push_back(true);
         game.scriptCurrentBlock.push_back(0);
@@ -182,6 +185,7 @@ void update(GameState& game)
     // رویداد کلیک روی اسپرایت
     if (game.spriteClicked)
     {
+        log_info("Sprite clicked");
         game.spriteClicked = false;
         for (int i = 0; i < game.program.size(); i++)
         {
@@ -307,7 +311,7 @@ void update(GameState& game)
             return;
         }
 
-// ===== بلوک‌های ظاهری =====
+        // ===== بلوک‌های ظاهری =====
         if (b.type == SAY || b.type == SAY_FOR || b.type == THINK || b.type == THINK_FOR)
         {
             if (b.type == SAY_FOR || b.type == THINK_FOR)
@@ -326,6 +330,11 @@ void update(GameState& game)
 
                         game.messageStartTime = SDL_GetTicks();
                         game.isShowingMessage = true;
+
+                        // لاگ برای نمایش پیام
+                        string msgType = game.player.isThinking ? "THINK" : "SAY";
+                        string logMsg = msgType + ": " + game.player.message;
+                        log_info(logMsg.c_str());
                     }
                     return;
                 }
@@ -338,12 +347,17 @@ void update(GameState& game)
                 }
                 return;
             }
-            else // SAY یا THINK ساده (بدون زمان)
+            else
             {
                 if (!b.parameters.empty())
                 {
                     game.player.message = b.parameters[0].asString();
                     game.player.isThinking = (b.type == THINK);
+
+                    // لاگ برای نمایش پیام
+                    string msgType = game.player.isThinking ? "THINK" : "SAY";
+                    string logMsg = msgType + ": " + game.player.message;
+                    log_info(logMsg.c_str());
                 }
                 scriptPC++;
                 safetyCounter++;
@@ -353,14 +367,22 @@ void update(GameState& game)
 
         if (b.type == SHOW)
         {
-            game.player.visible = true;
+            if (!game.player.visible)
+            {
+                game.player.visible = true;
+                log_info("Sprite shown");
+            }
             scriptPC++;
             continue;
         }
 
         if (b.type == HIDE)
         {
-            game.player.visible = false;
+            if (game.player.visible)
+            {
+                game.player.visible = false;
+                log_info("Sprite hidden");
+            }
             scriptPC++;
             continue;
         }
@@ -373,7 +395,6 @@ void update(GameState& game)
                 game.player.w = (int)(game.player.w * (1 + percent/100));
                 game.player.h = (int)(game.player.h * (1 + percent/100));
 
-                // محدودیت حداقل اندازه
                 if (game.player.w < 5) game.player.w = 5;
                 if (game.player.h < 5) game.player.h = 5;
             }
@@ -386,7 +407,6 @@ void update(GameState& game)
             if (!b.parameters.empty())
             {
                 double percent = b.parameters[0].asNumber();
-                // درصد نسبت به اندازه اصلی (فعلاً از 50 به عنوان پایه استفاده می‌کنیم)
                 int newSize = (int)(percent);
                 if (newSize < 5) newSize = 5;
                 game.player.w = newSize;
@@ -401,41 +421,42 @@ void update(GameState& game)
         {
             if (b.type == PLAY_SOUND)
             {
-                // پخش صدا و ادامه
                 if (game.soundEffect)
                 {
                     int volumeLevel = (game.volume * MIX_MAX_VOLUME) / 100;
                     Mix_VolumeChunk(game.soundEffect, volumeLevel);
                     Mix_PlayChannel(-1, game.soundEffect, 0);
+                    log_info("Playing sound");
+                }
+                else
+                {
+                    log_error("No sound loaded to play");
                 }
                 scriptPC++;
             }
-            else // PLAY_SOUND_UNTIL_DONE
+            else
             {
-                // اگه تازه وارد این بلوک شدیم
                 if (!game.isWaiting)
                 {
-                    // پخش صدا (فقط یه بار)
                     if (game.soundEffect)
                     {
                         int volumeLevel = (game.volume * MIX_MAX_VOLUME) / 100;
                         Mix_VolumeChunk(game.soundEffect, volumeLevel);
                         game.soundChannel = Mix_PlayChannel(-1, game.soundEffect, 0);
+                        log_info("Playing sound until done");
 
                         if (game.soundChannel == -1)
                         {
-                            cout << "Error playing sound: " << Mix_GetError() << endl;
+                            log_error(("Error playing sound: " + string(Mix_GetError())).c_str());
                         }
                     }
 
-                    // مدت زمان پخش صدا (مثلاً 1 ثانیه)
                     game.waitStartTime = SDL_GetTicks();
-                    game.waitDuration = 1000; // 1 ثانیه
+                    game.waitDuration = 1000;
                     game.isWaiting = true;
                     return;
                 }
 
-                // چک می‌کنیم ببینیم صدا تموم شده یا نه
                 if (SDL_GetTicks() - game.waitStartTime >= game.waitDuration)
                 {
                     game.isWaiting = false;
@@ -448,9 +469,9 @@ void update(GameState& game)
 
         if (b.type == STOP_ALL_SOUNDS)
         {
-            Mix_HaltChannel(-1);  // توقف همه کانال‌ها
+            Mix_HaltChannel(-1);
             game.isPlayingSound = false;
-            cout << "Stopping all sounds" << endl;
+            log_info("Stopping all sounds");
             scriptPC++;
             continue;
         }
@@ -463,7 +484,7 @@ void update(GameState& game)
                 game.volume += change;
                 if (game.volume < 0) game.volume = 0;
                 if (game.volume > 100) game.volume = 100;
-                cout << "Volume changed to: " << game.volume << endl;
+                log_info(("Volume changed to: " + to_string(game.volume) + "%").c_str());
             }
             scriptPC++;
             continue;
@@ -477,7 +498,7 @@ void update(GameState& game)
                 if (newVolume < 0) newVolume = 0;
                 if (newVolume > 100) newVolume = 100;
                 game.volume = newVolume;
-                cout << "Volume set to: " << game.volume << endl;
+                log_info(("Volume set to: " + to_string(game.volume) + "%").c_str());
             }
             scriptPC++;
             continue;
@@ -498,6 +519,7 @@ void update(GameState& game)
             if (!b.parameters.empty() && !b.variableName.empty())
             {
                 game.variables[b.variableName] = b.parameters[0];
+                log_info(("Variable set: " + b.variableName).c_str());
             }
             scriptPC++;
             safetyCounter++;
@@ -515,6 +537,7 @@ void update(GameState& game)
                 Value current = game.variables[b.variableName];
                 double newVal = current.asNumber() + b.parameters[0].asNumber();
                 game.variables[b.variableName] = Value(newVal);
+                log_info(("Variable changed: " + b.variableName).c_str());
             }
             scriptPC++;
             safetyCounter++;
@@ -528,6 +551,7 @@ void update(GameState& game)
             game.player.lastPenX = game.player.x + game.player.w/2;
             game.player.lastPenY = game.player.y + game.player.h/2;
             game.player.penMoved = true;
+            log_info("Pen down");
             scriptPC++;
             continue;
         }
@@ -535,6 +559,7 @@ void update(GameState& game)
         if (b.type == PEN_UP)
         {
             game.player.penDown = false;
+            log_info("Pen up");
             scriptPC++;
             continue;
         }
@@ -546,6 +571,7 @@ void update(GameState& game)
                 game.player.penR = (Uint8)b.parameters[0].asNumber();
                 game.player.penG = (Uint8)b.parameters[1].asNumber();
                 game.player.penB = (Uint8)b.parameters[2].asNumber();
+                log_info("Pen color changed");
             }
             scriptPC++;
             continue;
@@ -557,6 +583,7 @@ void update(GameState& game)
             {
                 game.player.penSize = (int)b.parameters[0].asNumber();
                 if (game.player.penSize < 1) game.player.penSize = 1;
+                log_info(("Pen size set to: " + to_string(game.player.penSize)).c_str());
             }
             scriptPC++;
             continue;
@@ -572,6 +599,7 @@ void update(GameState& game)
             game.penG_.clear();
             game.penB_.clear();
             game.penSize_.clear();
+            log_info("Pen cleared");
             scriptPC++;
             continue;
         }
@@ -608,17 +636,15 @@ void update(GameState& game)
                 if (game.remainingMove <= 0)
                 {
                     game.isExecutingBlock = false;
-                    scriptPC++;  // <--- این خط رو اضافه کن
+                    scriptPC++;
                 }
                 else
                 {
-                    // اگه هنوز حرکت تموم نشده، همینجا بمون و بعداً ادامه بده
                     break;
                 }
             }
             else
             {
-                // بلوک‌های حرکتی غیر از move (مثل turn, goto, ...)
                 if (b.type == TURN_RIGHT)
                 {
                     if (!b.parameters.empty())
@@ -635,6 +661,7 @@ void update(GameState& game)
                     {
                         game.player.x = b.parameters[0].asNumber();
                         game.player.y = b.parameters[1].asNumber();
+                        log_info(("Goto: x=" + to_string(game.player.x) + " y=" + to_string(game.player.y)).c_str());
                     }
                 }
                 else if (b.type == CHANGE_X)
@@ -661,10 +688,10 @@ void update(GameState& game)
                 {
                     game.player.x = rand() % (game.screenWidth - game.player.w);
                     game.player.y = rand() % (game.screenHeight - game.player.h);
+                    log_info("Goto random position");
                 }
                 else if (b.type == GOTO_MOUSE)
                 {
-                    // محاسبه مختصات استیج
                     int categoriesPanelWidth = 180;
                     int examplesPanelX = categoriesPanelWidth + 30;
                     int examplesPanelWidth = 250;
@@ -679,23 +706,18 @@ void update(GameState& game)
                     int stageWidth = stagePanelWidth - 20;
                     int stageHeight = 300;
 
-                    // تبدیل مختصات ماوس به مختصات داخل استیج
                     if (game.mouseX >= stageX && game.mouseX <= stageX + stageWidth &&
                         game.mouseY >= stageY && game.mouseY <= stageY + stageHeight)
                     {
-                        // ماوس داخل استیج هست
                         game.player.x = (double)(game.mouseX - stageX) * game.screenWidth / stageWidth;
                         game.player.y = (double)(game.mouseY - stageY) * game.screenHeight / stageHeight;
                     }
                     else
                     {
-                        // ماوس خارج استیج هست - می‌تونی یه رفتار دیگه انتخاب کنی
-                        // مثلاً به مرکز استیج بره
                         game.player.x = game.screenWidth / 2 - game.player.w / 2;
                         game.player.y = game.screenHeight / 2 - game.player.h / 2;
                     }
 
-                    // محدود کردن به صفحه
                     if (game.player.x < 0) game.player.x = 0;
                     if (game.player.y < 0) game.player.y = 0;
                     if (game.player.x + game.player.w > game.screenWidth)
@@ -703,11 +725,11 @@ void update(GameState& game)
                     if (game.player.y + game.player.h > game.screenHeight)
                         game.player.y = game.screenHeight - game.player.h;
 
+                    log_info("Goto mouse position");
                     scriptPC++;
                     continue;
                 }
 
-                // محدودیت مرزها
                 if (game.player.x < 0) game.player.x = 0;
                 if (game.player.y < 0) game.player.y = 0;
                 if (game.player.x + game.player.w > game.screenWidth)
@@ -715,7 +737,7 @@ void update(GameState& game)
                 if (game.player.y + game.player.h > game.screenHeight)
                     game.player.y = game.screenHeight - game.player.h;
 
-                scriptPC++;  // <--- این خط رو اضافه کن
+                scriptPC++;
             }
 
             safetyCounter++;

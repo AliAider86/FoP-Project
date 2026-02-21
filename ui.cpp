@@ -100,10 +100,9 @@ void handleEvents(bool &running, GameState& game)
 // ===== ویرایش با صفحه‌کلید =====
         if (e.type == SDL_KEYDOWN)
         {
-            // اول بررسی کن که آیا ویرایش مربوط به بلوک هست یا اسپرایت
+            // کلیدهای خاص: Backspace, Enter, Escape
             bool blockEditing = false;
 
-            // بررسی ویرایش بلوک‌ها
             for (int i = 0; i < game.program.size(); i++)
             {
                 if (game.program[i].editingMode)
@@ -179,35 +178,6 @@ void handleEvents(bool &running, GameState& game)
                     {
                         b.editingBuffer.pop_back();
                     }
-                    else
-                    {
-                        char c = e.key.keysym.sym;
-
-                        // تشخیص نوع فیلد (عددی یا متنی)
-                        bool isTextField = false;
-
-                        if ((b.type == SAY_FOR || b.type == THINK_FOR) && b.editingField == 0)
-                            isTextField = true;
-                        else if ((b.type == SAY || b.type == THINK) && b.editingField == 0)
-                            isTextField = true;
-
-                        if (isTextField)
-                        {
-                            // فیلد متنی - همه کاراکترهای قابل چاپ
-                            if (c >= 32 && c <= 126)
-                                b.editingBuffer += c;
-                        }
-                        else
-                        {
-                            // فیلد عددی
-                            if (c >= '0' && c <= '9')
-                                b.editingBuffer += c;
-                            else if (c == '.' && b.editingBuffer.find('.') == string::npos)
-                                b.editingBuffer += '.';
-                            else if (c == '-' && (b.editingBuffer.empty() || b.editingBuffer == "-"))
-                                b.editingBuffer += '-';
-                        }
-                    }
                     break;
                 }
             }
@@ -264,17 +234,63 @@ void handleEvents(bool &running, GameState& game)
                 {
                     game.editingBuffer.pop_back();
                 }
-                else
-                {
-                    char c = e.key.keysym.sym;
+            }
+        }
 
-                    if (game.editingField == 0)  // نام - همه کاراکترها
+// ===== دریافت متن از کاربر =====
+        if (e.type == SDL_TEXTINPUT && !game.isDragging)
+        {
+
+            // بررسی ویرایش بلوک
+            bool blockEditing = false;
+
+            for (int i = 0; i < game.program.size(); i++)
+            {
+                if (game.program[i].editingMode)
+                {
+                    blockEditing = true;
+                    Block& b = game.program[i];
+
+                    // تشخیص نوع فیلد (عددی یا متنی)
+                    bool isTextField = false;
+
+                    if ((b.type == SAY_FOR || b.type == THINK_FOR) && b.editingField == 0)
+                        isTextField = true;
+                    else if ((b.type == SAY || b.type == THINK) && b.editingField == 0)
+                        isTextField = true;
+
+                    if (isTextField)
                     {
-                        if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') ||
-                            (c >= '0' && c <= '9') || c == ' ' || c == '_')
-                            game.editingBuffer += c;
+                        // فیلد متنی - همه کاراکترها
+                        b.editingBuffer += e.text.text;
                     }
-                    else  // سایر فیلدها - فقط عددی
+                    else
+                    {
+                        // فیلد عددی - فقط اعداد، نقطه و منفی
+                        for (char c : string(e.text.text))
+                        {
+                            if (c >= '0' && c <= '9')
+                                b.editingBuffer += c;
+                            else if (c == '.' && b.editingBuffer.find('.') == string::npos)
+                                b.editingBuffer += '.';
+                            else if (c == '-' && b.editingBuffer.empty())
+                                b.editingBuffer += '-';
+                        }
+                    }
+                    break;
+                }
+            }
+
+            // ویرایش اسپرایت
+            if (!blockEditing && game.editingMode)
+            {
+                if (game.editingField == 0) // نام
+                {
+                    game.editingBuffer += e.text.text;
+                }
+                else // فیلدهای عددی
+                {
+                    for (char c : string(e.text.text))
                     {
                         if (c >= '0' && c <= '9')
                             game.editingBuffer += c;
@@ -348,12 +364,42 @@ void handleEvents(bool &running, GameState& game)
             int buttonSpacing = 10;
             int startX = (game.screenWidth - (6 * (buttonWidth + buttonSpacing))) / 2;
 
-            game.runButton = Button(startX, buttonY, buttonWidth, buttonHeight);
-            game.pauseButton = Button(startX + buttonWidth + buttonSpacing, buttonY, buttonWidth, buttonHeight);
-            game.stepButton = Button(startX + 2*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
-            game.resetButton = Button(startX + 3*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
-            game.saveButton = Button(startX + 4*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
-            game.loadButton = Button(startX + 5*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight);
+            // مقداردهی دستی دکمه‌ها (بدون استفاده از constructor)
+            game.runButton.x = startX;
+            game.runButton.y = buttonY;
+            game.runButton.w = buttonWidth;
+            game.runButton.h = buttonHeight;
+            game.runButton.isPressed = 0;
+
+            game.pauseButton.x = startX + buttonWidth + buttonSpacing;
+            game.pauseButton.y = buttonY;
+            game.pauseButton.w = buttonWidth;
+            game.pauseButton.h = buttonHeight;
+            game.pauseButton.isPressed = 0;
+
+            game.stepButton.x = startX + 2*(buttonWidth + buttonSpacing);
+            game.stepButton.y = buttonY;
+            game.stepButton.w = buttonWidth;
+            game.stepButton.h = buttonHeight;
+            game.stepButton.isPressed = 0;
+
+            game.resetButton.x = startX + 3*(buttonWidth + buttonSpacing);
+            game.resetButton.y = buttonY;
+            game.resetButton.w = buttonWidth;
+            game.resetButton.h = buttonHeight;
+            game.resetButton.isPressed = 0;
+
+            game.saveButton.x = startX + 4*(buttonWidth + buttonSpacing);
+            game.saveButton.y = buttonY;
+            game.saveButton.w = buttonWidth;
+            game.saveButton.h = buttonHeight;
+            game.saveButton.isPressed = 0;
+
+            game.loadButton.x = startX + 5*(buttonWidth + buttonSpacing);
+            game.loadButton.y = buttonY;
+            game.loadButton.w = buttonWidth;
+            game.loadButton.h = buttonHeight;
+            game.loadButton.isPressed = 0;
 
             if (mx >= game.runButton.x && mx <= game.runButton.x + game.runButton.w &&
                 my >= game.runButton.y && my <= game.runButton.y + game.runButton.h)
@@ -703,8 +749,7 @@ void handleEvents(bool &running, GameState& game)
             }
 
             // ===== تشخیص کلیک روی مشخصات اسپرایت =====
-
-            SDL_Rect stage = {stageX, stageY, stageWidth, stageHeight};  // این خط رو اضافه کن
+            SDL_Rect stage = {stageX, stageY, stageWidth, stageHeight};
 
             int spritePanelY = stage.y + stage.h + 10;
             SDL_Rect spritePanel = {stagePanelX + 5, spritePanelY, stageWidth, 150};
@@ -931,7 +976,6 @@ void render(SDL_Renderer* renderer, GameState& game)
     // لوگو
     filledCircleRGBA(renderer, 40, 30, 20, 255, 255, 255, 255);
     SDL_Color white = {255,255,255,255};
-
     renderText(renderer, "Scratch", 70, 20, white);
 
     // وضعیت اجرا
@@ -1174,7 +1218,6 @@ void render(SDL_Renderer* renderer, GameState& game)
     renderText(renderer, "Code Area", codeArea.x + 10, codeArea.y + 5, black);
 
     // نمایش بلوک‌های برنامه در فضای کدنویسی
-    // نمایش بلوک‌های برنامه در فضای کدنویسی
     for (int i = 0; i < game.program.size() && i < 20; i++)
     {
         int blockY = codeArea.y + 30 + i * 45;
@@ -1215,168 +1258,172 @@ void render(SDL_Renderer* renderer, GameState& game)
         // ===== نمایش متن بلوک =====
         string blockText;
         SDL_Color textColor = black;
-
         SDL_Color blue = {0, 0, 255, 255};
-        SDL_Color red = {255, 0, 0, 255};
 
+        // === اولویت با حالت ویرایش ===
         if (game.program[i].editingMode)
+        {
+            blockText = game.program[i].editingBuffer + "_";
             textColor = blue;
-
-        // تشخیص نوع بلوک و ساختن متن مناسب
-        if (type == GOTO_XY && game.program[i].parameters.size() >= 2)
-        {
-            blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
-                        " y: " + to_string((int)game.program[i].parameters[1].asNumber());
-        }
-        else if (type == GOTO_MOUSE)
-        {
-            blockText = "go to mouse-pointer";
-        }
-        else if (type == GOTO_RANDOM)
-        {
-            blockText = "go to random position";
-        }
-        else if (type == MOVE_UP || type == MOVE_DOWN || type == MOVE_LEFT || type == MOVE_RIGHT)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = "move " + to_string((int)game.program[i].parameters[0].asNumber()) + " steps";
-            else
-                blockText = "move 10 steps";
-        }
-        else if (type == TURN_RIGHT || type == TURN_LEFT)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = "turn " + to_string((int)game.program[i].parameters[0].asNumber()) + " degrees";
-            else
-                blockText = "turn 15 degrees";
-        }
-        else if (type == CHANGE_X || type == CHANGE_Y)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = (type == CHANGE_X ? "change x by " : "change y by ") +
-                            to_string((int)game.program[i].parameters[0].asNumber());
-        }
-        else if (type == SET_X || type == SET_Y)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = (type == SET_X ? "set x to " : "set y to ") +
-                            to_string((int)game.program[i].parameters[0].asNumber());
-        }
-        else if (type == WAIT && !game.program[i].parameters.empty())
-        {
-            char buffer[50];
-            sprintf(buffer, "wait %.1f seconds", game.program[i].parameters[0].asNumber());
-            blockText = buffer;
-        }
-        else if (type == REPEAT)
-        {
-            blockText = "repeat " + to_string(game.program[i].repeatCount);
-        }
-        else if (type == FOREVER)
-        {
-            blockText = "forever";
-        }
-        else if (type == WHEN_GREEN_FLAG)
-        {
-            blockText = "when flag clicked";
-        }
-        else if (type == WHEN_KEY_PRESSED)
-        {
-            blockText = "when key pressed";
-        }
-        else if (type == WHEN_SPRITE_CLICKED)
-        {
-            blockText = "when sprite clicked";
-        }
-        else if (type == SAY_FOR || type == THINK_FOR)
-        {
-            if (game.program[i].parameters.size() >= 2)
-            {
-                blockText = (type == SAY_FOR ? "say " : "think ") +
-                            game.program[i].parameters[0].asString() +
-                            " for " + to_string((int)game.program[i].parameters[1].asNumber()) + " secs";
-            }
-        }
-        else if (type == SAY || type == THINK)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = (type == SAY ? "say " : "think ") + game.program[i].parameters[0].asString();
-        }
-        else if (type == SHOW)
-        {
-            blockText = "show";
-        }
-        else if (type == HIDE)
-        {
-            blockText = "hide";
-        }
-        else if (type == CHANGE_SIZE)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = "change size by " + to_string((int)game.program[i].parameters[0].asNumber());
-        }
-        else if (type == SET_SIZE)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = "set size to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
-        }
-        else if (type == PLAY_SOUND)
-        {
-            blockText = "play sound Meow";
-        }
-        else if (type == PLAY_SOUND_UNTIL_DONE)
-        {
-            blockText = "play sound Meow until done";
-        }
-        else if (type == STOP_ALL_SOUNDS)
-        {
-            blockText = "stop all sounds";
-        }
-        else if (type == CHANGE_VOLUME)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = "change volume by " + to_string((int)game.program[i].parameters[0].asNumber());
-        }
-        else if (type == SET_VOLUME)
-        {
-            if (!game.program[i].parameters.empty())
-                blockText = "set volume to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
-        }
-        else if (type == PEN_DOWN)
-        {
-            blockText = "pen down";
-        }
-        else if (type == PEN_UP)
-        {
-            blockText = "pen up";
-        }
-        else if (type == PEN_CLEAR)
-        {
-            blockText = "clear";
-        }
-        else if (type >= OP_ADD && type <= OP_XOR)
-        {
-            // برای عملگرها
-            if (type == OP_ADD) blockText = "0 + 0";
-            else if (type == OP_SUBTRACT) blockText = "0 - 0";
-            else if (type == OP_MULTIPLY) blockText = "0 * 0";
-            else if (type == OP_DIVIDE) blockText = "0 / 0";
-            else if (type == OP_EQUAL) blockText = "0 = 0";
-            else if (type == OP_LESS_THAN) blockText = "0 < 0";
-            else if (type == OP_GREATER_THAN) blockText = "0 > 0";
-            else if (type == OP_NOT) blockText = "not";
-            else if (type == OP_OR) blockText = "or";
-            else if (type == OP_AND) blockText = "and";
-            else blockText = "operator";
-        }
-        else if (type == SET_VARIABLE)
-        {
-            blockText = "set " + game.program[i].variableName + " to 0";
         }
         else
         {
-            // اگه هیچکدوم نبود، از eventName استفاده کن
-            blockText = game.program[i].eventName.empty() ? "Block" : game.program[i].eventName;
+            // تشخیص نوع بلوک و ساختن متن مناسب
+            if (type == GOTO_XY && game.program[i].parameters.size() >= 2)
+            {
+                blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
+                            " y: " + to_string((int)game.program[i].parameters[1].asNumber());
+            }
+            else if (type == GOTO_MOUSE)
+            {
+                blockText = "go to mouse-pointer";
+            }
+            else if (type == GOTO_RANDOM)
+            {
+                blockText = "go to random position";
+            }
+            else if (type == MOVE_UP || type == MOVE_DOWN || type == MOVE_LEFT || type == MOVE_RIGHT)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = "move " + to_string((int)game.program[i].parameters[0].asNumber()) + " steps";
+                else
+                    blockText = "move 10 steps";
+            }
+            else if (type == TURN_RIGHT || type == TURN_LEFT)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = "turn " + to_string((int)game.program[i].parameters[0].asNumber()) + " degrees";
+                else
+                    blockText = "turn 15 degrees";
+            }
+            else if (type == CHANGE_X || type == CHANGE_Y)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = (type == CHANGE_X ? "change x by " : "change y by ") +
+                                to_string((int)game.program[i].parameters[0].asNumber());
+            }
+            else if (type == SET_X || type == SET_Y)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = (type == SET_X ? "set x to " : "set y to ") +
+                                to_string((int)game.program[i].parameters[0].asNumber());
+            }
+            else if (type == WAIT && !game.program[i].parameters.empty())
+            {
+                char buffer[50];
+                sprintf(buffer, "wait %.1f seconds", game.program[i].parameters[0].asNumber());
+                blockText = buffer;
+            }
+            else if (type == REPEAT)
+            {
+                blockText = "repeat " + to_string(game.program[i].repeatCount);
+            }
+            else if (type == FOREVER)
+            {
+                blockText = "forever";
+            }
+            else if (type == WHEN_GREEN_FLAG)
+            {
+                blockText = "when flag clicked";
+            }
+            else if (type == WHEN_KEY_PRESSED)
+            {
+                blockText = "when key pressed";
+            }
+            else if (type == WHEN_SPRITE_CLICKED)
+            {
+                blockText = "when sprite clicked";
+            }
+            else if (type == SAY_FOR || type == THINK_FOR)
+            {
+                if (game.program[i].parameters.size() >= 2)
+                {
+                    blockText = (type == SAY_FOR ? "say " : "think ") +
+                                game.program[i].parameters[0].asString() +
+                                " for " + to_string((int)game.program[i].parameters[1].asNumber()) + " secs";
+                }
+            }
+            else if (type == SAY || type == THINK)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = (type == SAY ? "say " : "think ") + game.program[i].parameters[0].asString();
+            }
+            else if (type == SHOW)
+            {
+                blockText = "show";
+            }
+            else if (type == HIDE)
+            {
+                blockText = "hide";
+            }
+            else if (type == CHANGE_SIZE)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = "change size by " + to_string((int)game.program[i].parameters[0].asNumber());
+            }
+            else if (type == SET_SIZE)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = "set size to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
+            }
+            else if (type == PLAY_SOUND)
+            {
+                blockText = "play sound Meow";
+            }
+            else if (type == PLAY_SOUND_UNTIL_DONE)
+            {
+                blockText = "play sound Meow until done";
+            }
+            else if (type == STOP_ALL_SOUNDS)
+            {
+                blockText = "stop all sounds";
+            }
+            else if (type == CHANGE_VOLUME)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = "change volume by " + to_string((int)game.program[i].parameters[0].asNumber());
+            }
+            else if (type == SET_VOLUME)
+            {
+                if (!game.program[i].parameters.empty())
+                    blockText = "set volume to " + to_string((int)game.program[i].parameters[0].asNumber()) + " %";
+            }
+            else if (type == PEN_DOWN)
+            {
+                blockText = "pen down";
+            }
+            else if (type == PEN_UP)
+            {
+                blockText = "pen up";
+            }
+            else if (type == PEN_CLEAR)
+            {
+                blockText = "clear";
+            }
+            else if (type >= OP_ADD && type <= OP_XOR)
+            {
+                // برای عملگرها
+                if (type == OP_ADD) blockText = "0 + 0";
+                else if (type == OP_SUBTRACT) blockText = "0 - 0";
+                else if (type == OP_MULTIPLY) blockText = "0 * 0";
+                else if (type == OP_DIVIDE) blockText = "0 / 0";
+                else if (type == OP_EQUAL) blockText = "0 = 0";
+                else if (type == OP_LESS_THAN) blockText = "0 < 0";
+                else if (type == OP_GREATER_THAN) blockText = "0 > 0";
+                else if (type == OP_NOT) blockText = "not";
+                else if (type == OP_OR) blockText = "or";
+                else if (type == OP_AND) blockText = "and";
+                else blockText = "operator";
+            }
+            else if (type == SET_VARIABLE)
+            {
+                blockText = "set " + game.program[i].variableName + " to 0";
+            }
+            else
+            {
+                // اگه هیچکدوم نبود، از eventName استفاده کن
+                blockText = game.program[i].eventName.empty() ? "Block" : game.program[i].eventName;
+            }
         }
 
         renderText(renderer, blockText.c_str(), blockRect.x + 5, blockRect.y + 10, textColor);
@@ -1558,7 +1605,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_Color blue = {0, 0, 255, 255};
     SDL_Color red = {255, 0, 0, 255};
 
-// اسم
+    // اسم
     if (game.editingMode && game.editingField == 0)
     {
         string displayText = "Name: " + game.editingBuffer + "_";
@@ -1634,19 +1681,10 @@ void render(SDL_Renderer* renderer, GameState& game)
     string visibleText = game.player.visible ? "Visible: Yes" : "Visible: No";
     renderText(renderer, visibleText.c_str(), textX, textY + lineHeight * 4, game.player.visible ? black : red);
 
-// ===== وضعیت صدا - اضافه شده =====
-//    char volumeBuffer[50];
-//    sprintf(volumeBuffer, "Volume: %d%%", game.volume);
-//    renderText(renderer, volumeBuffer, textX, textY + lineHeight * 5, black);
-
     if (game.isPlayingSound)
     {
-//        string soundText = "Playing: " + game.currentSound;
-//        renderText(renderer, soundText.c_str(), textX, textY + lineHeight * 6, black);
+        // می‌توانید وضعیت پخش صدا را نمایش دهید
     }
-
-// راهنما (با یه کمی پایینتر)
-//    renderText(renderer, "Click on any value to edit", spritePanel.x + 10, spritePanel.y + spritePanel.h - 20, black);
 
     // ========== خطوط جداکننده ==========
     SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
