@@ -4,11 +4,23 @@
 #include "engine.h"
 #include "blocks.h"
 #include <SDL2/SDL.h>
+#include "logger.h"
 
 using namespace std;
 
 void executeLooksBlock(Block& b, GameState& game, SDL_Renderer* renderer)
 {
+    // دریافت اسپرایت فعال
+    Sprite* activeSprite = nullptr;
+    if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
+    {
+        activeSprite = &game.sprites[game.activeSpriteIndex];
+    }
+    else
+    {
+        return; // اسپرایت فعالی وجود ندارد
+    }
+
     switch (b.type)
     {
         case SAY:
@@ -18,10 +30,8 @@ void executeLooksBlock(Block& b, GameState& game, SDL_Renderer* renderer)
         {
             if (!b.parameters.empty())
             {
-                game.player.message = b.parameters[0].asString();
-                game.player.isThinking = (b.type == THINK || b.type == THINK_FOR);
-
-                // اینجا از GameState استفاده کن نه Sprite
+                activeSprite->message = b.parameters[0].asString();
+                activeSprite->isThinking = (b.type == THINK || b.type == THINK_FOR);
                 game.messageStartTime = SDL_GetTicks();
 
                 if (b.type == SAY_FOR || b.type == THINK_FOR)
@@ -29,32 +39,43 @@ void executeLooksBlock(Block& b, GameState& game, SDL_Renderer* renderer)
                     if (b.parameters.size() >= 2)
                         game.messageDuration = b.parameters[1].asNumber() * 1000;
                     else
-                        game.messageDuration = 2000; // پیش‌فرض 2 ثانیه
+                        game.messageDuration = 2000;
 
                     game.isShowingMessage = true;
                 }
                 else
                 {
-                    game.messageDuration = 0; // تا ابد
+                    game.messageDuration = 0;
                 }
+
+                string msgType = activeSprite->isThinking ? "THINK" : "SAY";
+                log_info((msgType + ": " + activeSprite->message).c_str());
             }
             break;
         }
 
         case SHOW:
-            game.player.visible = true;
+            activeSprite->visible = true;
+            log_info(("Sprite shown: " + activeSprite->name).c_str());
             break;
 
         case HIDE:
-            game.player.visible = false;
+            activeSprite->visible = false;
+            log_info(("Sprite hidden: " + activeSprite->name).c_str());
             break;
 
         case CHANGE_SIZE:
             if (!b.parameters.empty())
             {
                 double percent = b.parameters[0].asNumber();
-                game.player.w = (int)(game.player.w * (1 + percent/100));
-                game.player.h = (int)(game.player.h * (1 + percent/100));
+                int oldW = activeSprite->w;
+                int oldH = activeSprite->h;
+
+                activeSprite->w = (int)(activeSprite->w * (1 + percent/100));
+                activeSprite->h = (int)(activeSprite->h * (1 + percent/100));
+
+                if (activeSprite->w < 5) activeSprite->w = 5;
+                if (activeSprite->h < 5) activeSprite->h = 5;
             }
             break;
 
@@ -62,14 +83,13 @@ void executeLooksBlock(Block& b, GameState& game, SDL_Renderer* renderer)
             if (!b.parameters.empty())
             {
                 double percent = b.parameters[0].asNumber();
-                // اندازه اصلی رو باید یه جایی ذخیره کنی
-                // فعلاً فرض می‌کنیم 100% همون اندازه فعلیه
-                game.player.w = 100;  // اینو بعداً درستش می‌کنیم
-                game.player.h = 100;
+                int newSize = (int)(percent);
+                if (newSize < 5) newSize = 5;
+
+                activeSprite->w = newSize;
+                activeSprite->h = newSize;
             }
             break;
-
-            // بقیه دستورات رو بعداً اضافه می‌کنیم
 
         default:
             break;

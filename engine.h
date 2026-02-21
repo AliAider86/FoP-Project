@@ -24,25 +24,26 @@ struct Sprite
     bool visible;
     double direction;
 
-    string message;     // متن حباب (برای SAY/THINK)
-    string name;        // اسم اسپرایت
+    string message;
+    string name;
     bool isThinking;
 
-    // برای قلم
     bool penDown;
     int penSize;
     Uint8 penR, penG, penB;
     double lastPenX, lastPenY;
     bool penMoved;
 
-    // برای تصویر اسپرایت
     SDL_Texture* texture;
     string imagePath;
+    int index;
+    bool isActive;
 };
 
 struct GameState
 {
-    Sprite player;
+    vector<Sprite> sprites;
+    int activeSpriteIndex;
 
     vector<Block> program;
 
@@ -63,6 +64,11 @@ struct GameState
     Button resetButton;
     Button saveButton;
     Button loadButton;
+
+    Button addSpriteBtn;
+    Button deleteSpriteBtn;
+    Button prevSpriteBtn;
+    Button nextSpriteBtn;
 
     Button moveCategoryBtn;
     Button looksCategoryBtn;
@@ -125,10 +131,19 @@ struct GameState
     bool isDragging;
     int dragOffsetX;
     int dragOffsetY;
+    int clickedSpriteIndex;
+    SDL_Texture* logoTexture;  // اضافه کن
 };
 
+// توابع اصلی
 void update(GameState& game);
 void saveProject(const GameState& game, const string& filename);
 void loadProject(GameState& game, const string& filename);
+
+// --- توابع مدیریت اسپرایت (اعلان‌ها) ---
+Sprite* getActiveSprite(GameState& game);
+void setActiveSprite(GameState& game, int index);
+void addSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath);
+void removeSprite(GameState& game, int index);
 
 #endif

@@ -2,12 +2,96 @@
 #include <algorithm>
 #include <fstream>
 #include <sstream>
+#include <cmath>
 #include "engine.h"
 #include "operators.h"
 #include "logger.h"
 
 using namespace std;
 
+// --- توابع کمکی برای مدیریت اسپرایت‌ها ---
+Sprite* getActiveSprite(GameState& game)
+{
+    if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
+        return &game.sprites[game.activeSpriteIndex];
+    return nullptr;
+}
+
+void setActiveSprite(GameState& game, int index)
+{
+    if (index < 0 || index >= game.sprites.size())
+        return;
+
+    if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
+        game.sprites[game.activeSpriteIndex].isActive = false;
+
+    game.activeSpriteIndex = index;
+    game.sprites[index].isActive = true;
+    log_info(("Active sprite changed to: " + game.sprites[index].name).c_str());
+}
+
+void addSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath)
+{
+    Sprite newSprite;
+    newSprite.x = game.screenWidth / 2 - 25;
+    newSprite.y = game.screenHeight / 2 - 25;
+    newSprite.w = 50;
+    newSprite.h = 50;
+    newSprite.visible = true;
+    newSprite.direction = 0;
+    newSprite.name = name;
+    newSprite.message = "";
+    newSprite.isThinking = false;
+    newSprite.penDown = false;
+    newSprite.penSize = 1;
+    newSprite.penR = 0;
+    newSprite.penG = 0;
+    newSprite.penB = 0;
+    newSprite.lastPenX = newSprite.x + newSprite.w/2;
+    newSprite.lastPenY = newSprite.y + newSprite.h/2;
+    newSprite.penMoved = false;
+    newSprite.texture = nullptr;
+    newSprite.imagePath = imagePath ? imagePath : "";
+    newSprite.index = game.sprites.size();
+    newSprite.isActive = false;
+
+    // این قسمت مهمه - لود کردن texture
+    if (imagePath && renderer && !newSprite.imagePath.empty())
+    {
+        extern bool loadSpriteTexture(Sprite* sprite, SDL_Renderer* renderer, const char* path);
+        loadSpriteTexture(&newSprite, renderer, newSprite.imagePath.c_str());
+    }
+
+    game.sprites.push_back(newSprite);
+    log_info(("Sprite added: " + string(name)).c_str());
+}
+
+void removeSprite(GameState& game, int index)
+{
+    if (index < 0 || index >= game.sprites.size())
+        return;
+
+    log_info(("Removing sprite: " + game.sprites[index].name).c_str());
+
+    if (game.sprites[index].texture)
+        SDL_DestroyTexture(game.sprites[index].texture);
+
+    game.sprites.erase(game.sprites.begin() + index);
+
+    if (game.activeSpriteIndex == index)
+    {
+        if (game.sprites.size() > 0)
+            setActiveSprite(game, 0);
+        else
+            game.activeSpriteIndex = -1;
+    }
+    else if (game.activeSpriteIndex > index)
+    {
+        game.activeSpriteIndex--;
+    }
+}
+
+// --- توابع ذخیره و بارگذاری ---
 void saveProject(const GameState& game, const string& filename)
 {
     log_info(("Saving project to: " + filename).c_str());
@@ -19,10 +103,24 @@ void saveProject(const GameState& game, const string& filename)
         return;
     }
 
-    file << "Sprite " << game.player.x << " " << game.player.y << " "
-         << game.player.w << " " << game.player.h << " "
-         << game.player.visible << " " << game.player.direction << endl;
+    // ذخیره تعداد اسپرایت‌ها
+    file << "Sprites " << game.sprites.size() << endl;
 
+    // ذخیره اطلاعات هر اسپرایت
+    for (const Sprite& s : game.sprites)
+    {
+        file << "Sprite " << s.x << " " << s.y << " "
+             << s.w << " " << s.h << " "
+             << s.visible << " " << s.direction << " "
+             << s.name << " " << s.imagePath << " "
+             << s.penDown << " " << s.penSize << " "
+             << (int)s.penR << " " << (int)s.penG << " " << (int)s.penB << endl;
+    }
+
+    // ذخیره ایندکس اسپرایت فعال
+    file << "ActiveSprite " << game.activeSpriteIndex << endl;
+
+    // ذخیره بلوک‌ها
     file << "Blocks " << game.program.size() << endl;
     for (const Block& b : game.program)
     {
@@ -40,6 +138,7 @@ void saveProject(const GameState& game, const string& filename)
              << b.eventName << " " << b.keyCode << endl;
     }
 
+    // ذخیره متغیرها
     file << "Variables " << game.variables.size() << endl;
     for (const auto& var : game.variables)
     {
@@ -67,6 +166,14 @@ void loadProject(GameState& game, const string& filename)
         return;
     }
 
+    // پاک کردن وضعیت قبلی
+    for (auto& s : game.sprites)
+    {
+        if (s.texture)
+            SDL_DestroyTexture(s.texture);
+    }
+
+    game.sprites.clear();
     game.program.clear();
     game.variables.clear();
     game.scriptStartIndices.clear();
@@ -76,15 +183,52 @@ void loadProject(GameState& game, const string& filename)
     game.penY1.clear();
     game.penX2.clear();
     game.penY2.clear();
+    game.penR_.clear();
+    game.penG_.clear();
+    game.penB_.clear();
+    game.penSize_.clear();
 
     string token;
     while (file >> token)
     {
-        if (token == "Sprite")
+        if (token == "Sprites")
         {
-            file >> game.player.x >> game.player.y
-                 >> game.player.w >> game.player.h
-                 >> game.player.visible >> game.player.direction;
+            int count;
+            file >> count;
+        }
+        else if (token == "Sprite")
+        {
+            Sprite s;
+            string name, imagePath;
+            int r, g, b;
+
+            file >> s.x >> s.y >> s.w >> s.h
+                 >> s.visible >> s.direction
+                 >> name >> imagePath
+                 >> s.penDown >> s.penSize
+                 >> r >> g >> b;
+
+            s.name = name;
+            s.imagePath = imagePath;
+            s.penR = (Uint8)r;
+            s.penG = (Uint8)g;
+            s.penB = (Uint8)b;
+            s.message = "";
+            s.isThinking = false;
+            s.lastPenX = s.x + s.w/2;
+            s.lastPenY = s.y + s.h/2;
+            s.penMoved = false;
+            s.texture = nullptr;
+            s.index = game.sprites.size();
+            s.isActive = false;
+
+            game.sprites.push_back(s);
+        }
+        else if (token == "ActiveSprite")
+        {
+            file >> game.activeSpriteIndex;
+            if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
+                game.sprites[game.activeSpriteIndex].isActive = true;
         }
         else if (token == "Blocks")
         {
@@ -163,6 +307,13 @@ void update(GameState& game)
     if (!game.isRunningCode)
         return;
 
+    Sprite* activeSprite = getActiveSprite(game);
+    if (!activeSprite && game.sprites.size() > 0)
+    {
+        setActiveSprite(game, 0);
+        activeSprite = getActiveSprite(game);
+    }
+
     const double speed = 2.0;
     int safetyCounter = 0;
     const int MAX_OPERATIONS_PER_FRAME = 1000;
@@ -183,10 +334,11 @@ void update(GameState& game)
     }
 
     // رویداد کلیک روی اسپرایت
-    if (game.spriteClicked)
+    if (game.spriteClicked && game.clickedSpriteIndex >= 0)
     {
-        log_info("Sprite clicked");
+        log_info(("Sprite clicked: " + game.sprites[game.clickedSpriteIndex].name).c_str());
         game.spriteClicked = false;
+
         for (int i = 0; i < game.program.size(); i++)
         {
             if (game.program[i].type == WHEN_SPRITE_CLICKED)
@@ -312,6 +464,8 @@ void update(GameState& game)
         }
 
         // ===== بلوک‌های ظاهری =====
+        if (!activeSprite) continue;
+
         if (b.type == SAY || b.type == SAY_FOR || b.type == THINK || b.type == THINK_FOR)
         {
             if (b.type == SAY_FOR || b.type == THINK_FOR)
@@ -320,8 +474,8 @@ void update(GameState& game)
                 {
                     if (!b.parameters.empty())
                     {
-                        game.player.message = b.parameters[0].asString();
-                        game.player.isThinking = (b.type == THINK_FOR);
+                        activeSprite->message = b.parameters[0].asString();
+                        activeSprite->isThinking = (b.type == THINK_FOR);
 
                         if (b.parameters.size() >= 2)
                             game.messageDuration = b.parameters[1].asNumber() * 1000;
@@ -331,17 +485,15 @@ void update(GameState& game)
                         game.messageStartTime = SDL_GetTicks();
                         game.isShowingMessage = true;
 
-                        // لاگ برای نمایش پیام
-                        string msgType = game.player.isThinking ? "THINK" : "SAY";
-                        string logMsg = msgType + ": " + game.player.message;
-                        log_info(logMsg.c_str());
+                        string msgType = activeSprite->isThinking ? "THINK" : "SAY";
+                        log_info((msgType + ": " + activeSprite->message).c_str());
                     }
                     return;
                 }
 
                 if (SDL_GetTicks() - game.messageStartTime >= game.messageDuration)
                 {
-                    game.player.message = "";
+                    activeSprite->message = "";
                     game.isShowingMessage = false;
                     scriptPC++;
                 }
@@ -351,13 +503,11 @@ void update(GameState& game)
             {
                 if (!b.parameters.empty())
                 {
-                    game.player.message = b.parameters[0].asString();
-                    game.player.isThinking = (b.type == THINK);
+                    activeSprite->message = b.parameters[0].asString();
+                    activeSprite->isThinking = (b.type == THINK);
 
-                    // لاگ برای نمایش پیام
-                    string msgType = game.player.isThinking ? "THINK" : "SAY";
-                    string logMsg = msgType + ": " + game.player.message;
-                    log_info(logMsg.c_str());
+                    string msgType = activeSprite->isThinking ? "THINK" : "SAY";
+                    log_info((msgType + ": " + activeSprite->message).c_str());
                 }
                 scriptPC++;
                 safetyCounter++;
@@ -367,9 +517,9 @@ void update(GameState& game)
 
         if (b.type == SHOW)
         {
-            if (!game.player.visible)
+            if (!activeSprite->visible)
             {
-                game.player.visible = true;
+                activeSprite->visible = true;
                 log_info("Sprite shown");
             }
             scriptPC++;
@@ -378,9 +528,9 @@ void update(GameState& game)
 
         if (b.type == HIDE)
         {
-            if (game.player.visible)
+            if (activeSprite->visible)
             {
-                game.player.visible = false;
+                activeSprite->visible = false;
                 log_info("Sprite hidden");
             }
             scriptPC++;
@@ -392,11 +542,11 @@ void update(GameState& game)
             if (!b.parameters.empty())
             {
                 double percent = b.parameters[0].asNumber();
-                game.player.w = (int)(game.player.w * (1 + percent/100));
-                game.player.h = (int)(game.player.h * (1 + percent/100));
+                activeSprite->w = (int)(activeSprite->w * (1 + percent/100));
+                activeSprite->h = (int)(activeSprite->h * (1 + percent/100));
 
-                if (game.player.w < 5) game.player.w = 5;
-                if (game.player.h < 5) game.player.h = 5;
+                if (activeSprite->w < 5) activeSprite->w = 5;
+                if (activeSprite->h < 5) activeSprite->h = 5;
             }
             scriptPC++;
             continue;
@@ -409,8 +559,8 @@ void update(GameState& game)
                 double percent = b.parameters[0].asNumber();
                 int newSize = (int)(percent);
                 if (newSize < 5) newSize = 5;
-                game.player.w = newSize;
-                game.player.h = newSize;
+                activeSprite->w = newSize;
+                activeSprite->h = newSize;
             }
             scriptPC++;
             continue;
@@ -547,10 +697,10 @@ void update(GameState& game)
         // ===== بلوک‌های قلم =====
         if (b.type == PEN_DOWN)
         {
-            game.player.penDown = true;
-            game.player.lastPenX = game.player.x + game.player.w/2;
-            game.player.lastPenY = game.player.y + game.player.h/2;
-            game.player.penMoved = true;
+            activeSprite->penDown = true;
+            activeSprite->lastPenX = activeSprite->x + activeSprite->w/2;
+            activeSprite->lastPenY = activeSprite->y + activeSprite->h/2;
+            activeSprite->penMoved = true;
             log_info("Pen down");
             scriptPC++;
             continue;
@@ -558,7 +708,7 @@ void update(GameState& game)
 
         if (b.type == PEN_UP)
         {
-            game.player.penDown = false;
+            activeSprite->penDown = false;
             log_info("Pen up");
             scriptPC++;
             continue;
@@ -568,9 +718,9 @@ void update(GameState& game)
         {
             if (b.parameters.size() >= 3)
             {
-                game.player.penR = (Uint8)b.parameters[0].asNumber();
-                game.player.penG = (Uint8)b.parameters[1].asNumber();
-                game.player.penB = (Uint8)b.parameters[2].asNumber();
+                activeSprite->penR = (Uint8)b.parameters[0].asNumber();
+                activeSprite->penG = (Uint8)b.parameters[1].asNumber();
+                activeSprite->penB = (Uint8)b.parameters[2].asNumber();
                 log_info("Pen color changed");
             }
             scriptPC++;
@@ -581,9 +731,9 @@ void update(GameState& game)
         {
             if (!b.parameters.empty())
             {
-                game.player.penSize = (int)b.parameters[0].asNumber();
-                if (game.player.penSize < 1) game.player.penSize = 1;
-                log_info(("Pen size set to: " + to_string(game.player.penSize)).c_str());
+                activeSprite->penSize = (int)b.parameters[0].asNumber();
+                if (activeSprite->penSize < 1) activeSprite->penSize = 1;
+                log_info(("Pen size set to: " + to_string(activeSprite->penSize)).c_str());
             }
             scriptPC++;
             continue;
@@ -624,10 +774,10 @@ void update(GameState& game)
 
                 switch (b.type)
                 {
-                    case MOVE_UP:    game.player.y -= moveAmount; break;
-                    case MOVE_DOWN:  game.player.y += moveAmount; break;
-                    case MOVE_LEFT:  game.player.x -= moveAmount; break;
-                    case MOVE_RIGHT: game.player.x += moveAmount; break;
+                    case MOVE_UP:    activeSprite->y -= moveAmount; break;
+                    case MOVE_DOWN:  activeSprite->y += moveAmount; break;
+                    case MOVE_LEFT:  activeSprite->x -= moveAmount; break;
+                    case MOVE_RIGHT: activeSprite->x += moveAmount; break;
                     default: break;
                 }
 
@@ -648,46 +798,46 @@ void update(GameState& game)
                 if (b.type == TURN_RIGHT)
                 {
                     if (!b.parameters.empty())
-                        game.player.direction += b.parameters[0].asNumber();
+                        activeSprite->direction += b.parameters[0].asNumber();
                 }
                 else if (b.type == TURN_LEFT)
                 {
                     if (!b.parameters.empty())
-                        game.player.direction -= b.parameters[0].asNumber();
+                        activeSprite->direction -= b.parameters[0].asNumber();
                 }
                 else if (b.type == GOTO_XY)
                 {
                     if (b.parameters.size() >= 2)
                     {
-                        game.player.x = b.parameters[0].asNumber();
-                        game.player.y = b.parameters[1].asNumber();
-                        log_info(("Goto: x=" + to_string(game.player.x) + " y=" + to_string(game.player.y)).c_str());
+                        activeSprite->x = b.parameters[0].asNumber();
+                        activeSprite->y = b.parameters[1].asNumber();
+                        log_info(("Goto: x=" + to_string(activeSprite->x) + " y=" + to_string(activeSprite->y)).c_str());
                     }
                 }
                 else if (b.type == CHANGE_X)
                 {
                     if (!b.parameters.empty())
-                        game.player.x += b.parameters[0].asNumber();
+                        activeSprite->x += b.parameters[0].asNumber();
                 }
                 else if (b.type == CHANGE_Y)
                 {
                     if (!b.parameters.empty())
-                        game.player.y += b.parameters[0].asNumber();
+                        activeSprite->y += b.parameters[0].asNumber();
                 }
                 else if (b.type == SET_X)
                 {
                     if (!b.parameters.empty())
-                        game.player.x = b.parameters[0].asNumber();
+                        activeSprite->x = b.parameters[0].asNumber();
                 }
                 else if (b.type == SET_Y)
                 {
                     if (!b.parameters.empty())
-                        game.player.y = b.parameters[0].asNumber();
+                        activeSprite->y = b.parameters[0].asNumber();
                 }
                 else if (b.type == GOTO_RANDOM)
                 {
-                    game.player.x = rand() % (game.screenWidth - game.player.w);
-                    game.player.y = rand() % (game.screenHeight - game.player.h);
+                    activeSprite->x = rand() % (game.screenWidth - activeSprite->w);
+                    activeSprite->y = rand() % (game.screenHeight - activeSprite->h);
                     log_info("Goto random position");
                 }
                 else if (b.type == GOTO_MOUSE)
@@ -709,33 +859,25 @@ void update(GameState& game)
                     if (game.mouseX >= stageX && game.mouseX <= stageX + stageWidth &&
                         game.mouseY >= stageY && game.mouseY <= stageY + stageHeight)
                     {
-                        game.player.x = (double)(game.mouseX - stageX) * game.screenWidth / stageWidth;
-                        game.player.y = (double)(game.mouseY - stageY) * game.screenHeight / stageHeight;
+                        activeSprite->x = (double)(game.mouseX - stageX) * game.screenWidth / stageWidth;
+                        activeSprite->y = (double)(game.mouseY - stageY) * game.screenHeight / stageHeight;
                     }
                     else
                     {
-                        game.player.x = game.screenWidth / 2 - game.player.w / 2;
-                        game.player.y = game.screenHeight / 2 - game.player.h / 2;
+                        activeSprite->x = game.screenWidth / 2 - activeSprite->w / 2;
+                        activeSprite->y = game.screenHeight / 2 - activeSprite->h / 2;
                     }
 
-                    if (game.player.x < 0) game.player.x = 0;
-                    if (game.player.y < 0) game.player.y = 0;
-                    if (game.player.x + game.player.w > game.screenWidth)
-                        game.player.x = game.screenWidth - game.player.w;
-                    if (game.player.y + game.player.h > game.screenHeight)
-                        game.player.y = game.screenHeight - game.player.h;
-
                     log_info("Goto mouse position");
-                    scriptPC++;
-                    continue;
                 }
 
-                if (game.player.x < 0) game.player.x = 0;
-                if (game.player.y < 0) game.player.y = 0;
-                if (game.player.x + game.player.w > game.screenWidth)
-                    game.player.x = game.screenWidth - game.player.w;
-                if (game.player.y + game.player.h > game.screenHeight)
-                    game.player.y = game.screenHeight - game.player.h;
+                // محدودیت مرزها
+                if (activeSprite->x < 0) activeSprite->x = 0;
+                if (activeSprite->y < 0) activeSprite->y = 0;
+                if (activeSprite->x + activeSprite->w > game.screenWidth)
+                    activeSprite->x = game.screenWidth - activeSprite->w;
+                if (activeSprite->y + activeSprite->h > game.screenHeight)
+                    activeSprite->y = game.screenHeight - activeSprite->h;
 
                 scriptPC++;
             }
@@ -748,25 +890,28 @@ void update(GameState& game)
         safetyCounter++;
     }
 
-    // رسم خط اگر قلم پایین است
-    if (game.player.penDown && game.player.penMoved)
+    // رسم خط اگر قلم پایین است (برای همه اسپرایت‌ها)
+    for (auto& sprite : game.sprites)
     {
-        double centerX = game.player.x + game.player.w/2;
-        double centerY = game.player.y + game.player.h/2;
-
-        if (abs(centerX - game.player.lastPenX) > 1 || abs(centerY - game.player.lastPenY) > 1)
+        if (sprite.penDown && sprite.penMoved)
         {
-            game.penX1.push_back((int)game.player.lastPenX);
-            game.penY1.push_back((int)game.player.lastPenY);
-            game.penX2.push_back((int)centerX);
-            game.penY2.push_back((int)centerY);
-            game.penR_.push_back(game.player.penR);
-            game.penG_.push_back(game.player.penG);
-            game.penB_.push_back(game.player.penB);
-            game.penSize_.push_back(game.player.penSize);
+            double centerX = sprite.x + sprite.w/2;
+            double centerY = sprite.y + sprite.h/2;
 
-            game.player.lastPenX = centerX;
-            game.player.lastPenY = centerY;
+            if (abs(centerX - sprite.lastPenX) > 1 || abs(centerY - sprite.lastPenY) > 1)
+            {
+                game.penX1.push_back((int)sprite.lastPenX);
+                game.penY1.push_back((int)sprite.lastPenY);
+                game.penX2.push_back((int)centerX);
+                game.penY2.push_back((int)centerY);
+                game.penR_.push_back(sprite.penR);
+                game.penG_.push_back(sprite.penG);
+                game.penB_.push_back(sprite.penB);
+                game.penSize_.push_back(sprite.penSize);
+
+                sprite.lastPenX = centerX;
+                sprite.lastPenY = centerY;
+            }
         }
     }
 

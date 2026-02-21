@@ -1,5 +1,6 @@
 #include "ui.h"
 #include "engine.h"
+#include "logger.h"
 #include <SDL2/SDL2_gfx.h>
 #include <string>
 #include <iostream>
@@ -7,9 +8,11 @@
 
 using namespace std;
 
+bool loadSpriteTexture(Sprite* sprite, SDL_Renderer* renderer, const char* path);
+
 // تابع renderText در main.cpp تعریف شده
 
-void handleEvents(bool &running, GameState& game)
+void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
 {
     // reset pressedThisFrame
     for (int i = 0; i < SDL_NUM_SCANCODES; i++)
@@ -32,14 +35,24 @@ void handleEvents(bool &running, GameState& game)
 
             if (e.key.keysym.scancode == SDL_SCANCODE_P)
             {
-                game.player.penDown = true;
-                game.player.lastPenX = game.player.x + game.player.w / 2;
-                game.player.lastPenY = game.player.y + game.player.h / 2;
-                game.player.penMoved = true;
+                Sprite* active = getActiveSprite(game);
+                if (active)
+                {
+                    active->penDown = true;
+                    active->lastPenX = active->x + active->w / 2;
+                    active->lastPenY = active->y + active->h / 2;
+                    active->penMoved = true;
+                    log_info("Pen down (key P)");
+                }
             }
             if (e.key.keysym.scancode == SDL_SCANCODE_O)
             {
-                game.player.penDown = false;
+                Sprite* active = getActiveSprite(game);
+                if (active)
+                {
+                    active->penDown = false;
+                    log_info("Pen up (key O)");
+                }
             }
         }
 
@@ -54,8 +67,11 @@ void handleEvents(bool &running, GameState& game)
             game.mouseY = e.motion.y;
 
             // ===== حرکت اسپرایت هنگام Drag =====
-            if (game.isDragging)
+            if (game.isDragging && game.activeSpriteIndex >= 0)
             {
+                Sprite* active = getActiveSprite(game);
+                if (!active) continue;
+
                 // محاسبه مختصات استیج
                 int categoriesPanelWidth = 180;
                 int examplesPanelX = categoriesPanelWidth + 30;
@@ -78,26 +94,26 @@ void handleEvents(bool &running, GameState& game)
                 // محدود کردن به استیج
                 if (newScreenX < stageX) newScreenX = stageX;
                 if (newScreenY < stageY) newScreenY = stageY;
-                if (newScreenX + (game.player.w * stageWidth / game.screenWidth) > stageX + stageWidth)
-                    newScreenX = stageX + stageWidth - (game.player.w * stageWidth / game.screenWidth);
-                if (newScreenY + (game.player.h * stageHeight / game.screenHeight) > stageY + stageHeight)
-                    newScreenY = stageY + stageHeight - (game.player.h * stageHeight / game.screenHeight);
+                if (newScreenX + (active->w * stageWidth / game.screenWidth) > stageX + stageWidth)
+                    newScreenX = stageX + stageWidth - (active->w * stageWidth / game.screenWidth);
+                if (newScreenY + (active->h * stageHeight / game.screenHeight) > stageY + stageHeight)
+                    newScreenY = stageY + stageHeight - (active->h * stageHeight / game.screenHeight);
 
                 // تبدیل به مختصات اصلی
-                game.player.x = (newScreenX - stageX) * game.screenWidth / stageWidth;
-                game.player.y = (newScreenY - stageY) * game.screenHeight / stageHeight;
+                active->x = (newScreenX - stageX) * game.screenWidth / stageWidth;
+                active->y = (newScreenY - stageY) * game.screenHeight / stageHeight;
 
                 // محدود کردن به صفحه اصلی
-                if (game.player.x < 0) game.player.x = 0;
-                if (game.player.y < 0) game.player.y = 0;
-                if (game.player.x + game.player.w > game.screenWidth)
-                    game.player.x = game.screenWidth - game.player.w;
-                if (game.player.y + game.player.h > game.screenHeight)
-                    game.player.y = game.screenHeight - game.player.h;
+                if (active->x < 0) active->x = 0;
+                if (active->y < 0) active->y = 0;
+                if (active->x + active->w > game.screenWidth)
+                    active->x = game.screenWidth - active->w;
+                if (active->y + active->h > game.screenHeight)
+                    active->y = game.screenHeight - active->h;
             }
         }
 
-// ===== ویرایش با صفحه‌کلید =====
+        // ===== ویرایش با صفحه‌کلید =====
         if (e.type == SDL_KEYDOWN)
         {
             // کلیدهای خاص: Backspace, Enter, Escape
@@ -185,32 +201,35 @@ void handleEvents(bool &running, GameState& game)
             // اگه ویرایش مربوط به بلوک نبود، برو سراغ ویرایش اسپرایت
             if (!blockEditing && game.editingMode)
             {
+                Sprite* active = getActiveSprite(game);
+                if (!active) continue;
+
                 if (e.key.keysym.sym == SDLK_RETURN || e.key.keysym.sym == SDLK_KP_ENTER)
                 {
                     // پایان ویرایش
                     if (game.editingField == 0)  // نام
                     {
                         if (!game.editingBuffer.empty())
-                            game.player.name = game.editingBuffer;
+                            active->name = game.editingBuffer;
                     }
                     else if (game.editingField == 1)  // x
                     {
-                        game.player.x = stod(game.editingBuffer);
+                        active->x = stod(game.editingBuffer);
                     }
                     else if (game.editingField == 2)  // y
                     {
-                        game.player.y = stod(game.editingBuffer);
+                        active->y = stod(game.editingBuffer);
                     }
                     else if (game.editingField == 3)  // size
                     {
                         int newSize = stoi(game.editingBuffer);
                         if (newSize < 5) newSize = 5;
-                        game.player.w = newSize;
-                        game.player.h = newSize;
+                        active->w = newSize;
+                        active->h = newSize;
                     }
                     else if (game.editingField == 4)  // direction
                     {
-                        game.player.direction = stod(game.editingBuffer);
+                        active->direction = stod(game.editingBuffer);
                     }
                     else if (game.editingField == 5)  // volume
                     {
@@ -237,10 +256,9 @@ void handleEvents(bool &running, GameState& game)
             }
         }
 
-// ===== دریافت متن از کاربر =====
+        // ===== دریافت متن از کاربر =====
         if (e.type == SDL_TEXTINPUT && !game.isDragging)
         {
-
             // بررسی ویرایش بلوک
             bool blockEditing = false;
 
@@ -324,20 +342,35 @@ void handleEvents(bool &running, GameState& game)
             int stageWidth = stagePanelWidth - 20;
             int stageHeight = 300;
 
-            // ===== تشخیص کلیک روی اسپرایت برای Drag =====
-            // تبدیل مختصات اسپرایت به مختصات داخل استیج
-            double playerScreenX = stageX + (game.player.x * stageWidth / game.screenWidth);
-            double playerScreenY = stageY + (game.player.y * stageHeight / game.screenHeight);
-            double playerScreenW = game.player.w * stageWidth / game.screenWidth;
-            double playerScreenH = game.player.h * stageHeight / game.screenHeight;
+            // ===== تشخیص کلیک روی اسپرایت‌ها برای Drag =====
+            game.clickedSpriteIndex = -1;
 
-            if (mx >= playerScreenX && mx <= playerScreenX + playerScreenW &&
-                my >= playerScreenY && my <= playerScreenY + playerScreenH)
+            // از آخرین اسپرایت شروع کن (اسپرایت‌های جلوتر اولویت دارند)
+            for (int i = game.sprites.size() - 1; i >= 0; i--)
             {
-                game.spriteClicked = true;
-                game.isDragging = true;
-                game.dragOffsetX = mx - playerScreenX;
-                game.dragOffsetY = my - playerScreenY;
+                Sprite& sprite = game.sprites[i];
+                if (!sprite.visible) continue;
+
+                // تبدیل مختصات اسپرایت به مختصات داخل استیج
+                double playerScreenX = stageX + (sprite.x * stageWidth / game.screenWidth);
+                double playerScreenY = stageY + (sprite.y * stageHeight / game.screenHeight);
+                double playerScreenW = sprite.w * stageWidth / game.screenWidth;
+                double playerScreenH = sprite.h * stageHeight / game.screenHeight;
+
+                if (mx >= playerScreenX && mx <= playerScreenX + playerScreenW &&
+                    my >= playerScreenY && my <= playerScreenY + playerScreenH)
+                {
+                    game.clickedSpriteIndex = i;
+                    game.spriteClicked = true;
+                    game.isDragging = true;
+                    game.dragOffsetX = mx - playerScreenX;
+                    game.dragOffsetY = my - playerScreenY;
+
+                    // اسپرایت کلیک شده رو فعال کن
+                    setActiveSprite(game, i);
+                    log_info(("Sprite clicked: " + sprite.name).c_str());
+                    break;
+                }
             }
 
             // ریست وضعیت دکمه‌ها
@@ -347,6 +380,11 @@ void handleEvents(bool &running, GameState& game)
             game.resetButton.isPressed = false;
             game.saveButton.isPressed = false;
             game.loadButton.isPressed = false;
+
+            game.addSpriteBtn.isPressed = false;
+            game.deleteSpriteBtn.isPressed = false;
+            game.prevSpriteBtn.isPressed = false;
+            game.nextSpriteBtn.isPressed = false;
 
             game.moveCategoryBtn.isPressed = false;
             game.looksCategoryBtn.isPressed = false;
@@ -364,43 +402,7 @@ void handleEvents(bool &running, GameState& game)
             int buttonSpacing = 10;
             int startX = (game.screenWidth - (6 * (buttonWidth + buttonSpacing))) / 2;
 
-            // مقداردهی دستی دکمه‌ها (بدون استفاده از constructor)
-            game.runButton.x = startX;
-            game.runButton.y = buttonY;
-            game.runButton.w = buttonWidth;
-            game.runButton.h = buttonHeight;
-            game.runButton.isPressed = 0;
-
-            game.pauseButton.x = startX + buttonWidth + buttonSpacing;
-            game.pauseButton.y = buttonY;
-            game.pauseButton.w = buttonWidth;
-            game.pauseButton.h = buttonHeight;
-            game.pauseButton.isPressed = 0;
-
-            game.stepButton.x = startX + 2*(buttonWidth + buttonSpacing);
-            game.stepButton.y = buttonY;
-            game.stepButton.w = buttonWidth;
-            game.stepButton.h = buttonHeight;
-            game.stepButton.isPressed = 0;
-
-            game.resetButton.x = startX + 3*(buttonWidth + buttonSpacing);
-            game.resetButton.y = buttonY;
-            game.resetButton.w = buttonWidth;
-            game.resetButton.h = buttonHeight;
-            game.resetButton.isPressed = 0;
-
-            game.saveButton.x = startX + 4*(buttonWidth + buttonSpacing);
-            game.saveButton.y = buttonY;
-            game.saveButton.w = buttonWidth;
-            game.saveButton.h = buttonHeight;
-            game.saveButton.isPressed = 0;
-
-            game.loadButton.x = startX + 5*(buttonWidth + buttonSpacing);
-            game.loadButton.y = buttonY;
-            game.loadButton.w = buttonWidth;
-            game.loadButton.h = buttonHeight;
-            game.loadButton.isPressed = 0;
-
+            // دکمه Run
             if (mx >= game.runButton.x && mx <= game.runButton.x + game.runButton.w &&
                 my >= game.runButton.y && my <= game.runButton.y + game.runButton.h)
             {
@@ -414,6 +416,7 @@ void handleEvents(bool &running, GameState& game)
                 game.isShowingMessage = false;
                 game.repeatCountStack.clear();
                 game.repeatStartStack.clear();
+                log_info("Run button clicked");
             }
 
             // ===== دکمه Pause =====
@@ -422,6 +425,7 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.pauseButton.isPressed = true;
                 game.isRunningCode = false;
+                log_info("Pause button clicked");
             }
 
             // ===== دکمه Step =====
@@ -431,6 +435,7 @@ void handleEvents(bool &running, GameState& game)
                 game.stepButton.isPressed = true;
                 game.stepMode = true;
                 game.isRunningCode = true;
+                log_info("Step button clicked");
             }
 
             // ===== دکمه Reset =====
@@ -446,9 +451,16 @@ void handleEvents(bool &running, GameState& game)
                 game.isShowingMessage = false;
                 game.repeatCountStack.clear();
                 game.repeatStartStack.clear();
-                game.player.x = game.screenWidth / 2 - game.player.w / 2;
-                game.player.y = game.screenHeight / 2 - game.player.h / 2;
-                game.player.isThinking = false;
+
+                // ریست همه اسپرایت‌ها به موقعیت اولیه
+                for (auto& sprite : game.sprites)
+                {
+                    sprite.x = game.screenWidth / 2 - sprite.w / 2;
+                    sprite.y = game.screenHeight / 2 - sprite.h / 2;
+                    sprite.isThinking = false;
+                    sprite.message = "";
+                }
+
                 game.penX1.clear();
                 game.penY1.clear();
                 game.penX2.clear();
@@ -457,6 +469,8 @@ void handleEvents(bool &running, GameState& game)
                 game.penG_.clear();
                 game.penB_.clear();
                 game.penSize_.clear();
+
+                log_info("Reset button clicked");
             }
 
             // ===== دکمه Save =====
@@ -473,6 +487,68 @@ void handleEvents(bool &running, GameState& game)
             {
                 game.loadButton.isPressed = true;
                 loadProject(game, "project.txt");
+                // بعد از لود، textureها رو دوباره لود کن
+                for (auto& sprite : game.sprites)
+                {
+                    if (!sprite.imagePath.empty())
+                    {
+                        loadSpriteTexture(&sprite, renderer, sprite.imagePath.c_str());
+                    }
+                }
+            }
+
+            int spriteBtnStartX = game.screenWidth - 350;
+
+            // دکمه Add Sprite
+            if (mx >= spriteBtnStartX && mx <= spriteBtnStartX + 60 &&
+                my >= buttonY && my <= buttonY + 40)
+            {
+                game.addSpriteBtn.isPressed = true;
+                addSprite(game, renderer, ("Sprite" + to_string(game.sprites.size() + 1)).c_str(), "cat.png");
+                log_info("Add sprite clicked");
+            }
+
+// دکمه Delete Sprite
+            if (mx >= spriteBtnStartX + 70 && mx <= spriteBtnStartX + 70 + 60 &&
+                my >= buttonY && my <= buttonY + 40)
+            {
+                game.deleteSpriteBtn.isPressed = true;
+                if (game.sprites.size() > 1)
+                {
+                    removeSprite(game, game.activeSpriteIndex);
+                    log_info("Delete sprite clicked");
+                }
+                else
+                {
+                    log_warning("Cannot delete last sprite");
+                }
+            }
+
+// دکمه Previous Sprite
+            if (mx >= spriteBtnStartX + 140 && mx <= spriteBtnStartX + 140 + 40 &&
+                my >= buttonY && my <= buttonY + 40)
+            {
+                game.prevSpriteBtn.isPressed = true;
+                if (game.sprites.size() > 0)
+                {
+                    int newIndex = game.activeSpriteIndex - 1;
+                    if (newIndex < 0) newIndex = game.sprites.size() - 1;
+                    setActiveSprite(game, newIndex);
+                    log_info("Previous sprite");
+                }
+            }
+
+// دکمه Next Sprite
+            if (mx >= spriteBtnStartX + 190 && mx <= spriteBtnStartX + 190 + 40 &&
+                my >= buttonY && my <= buttonY + 40)
+            {
+                game.nextSpriteBtn.isPressed = true;
+                if (game.sprites.size() > 0)
+                {
+                    int newIndex = (game.activeSpriteIndex + 1) % game.sprites.size();
+                    setActiveSprite(game, newIndex);
+                    log_info("Next sprite");
+                }
             }
 
             // ===== دکمه‌های دسته‌بندی =====
@@ -643,6 +719,7 @@ void handleEvents(bool &running, GameState& game)
                     newBlock.eventName = blockName;
 
                     game.program.push_back(newBlock);
+                    log_info(("Block added: " + blockName).c_str());
                 }
             }
 
@@ -758,82 +835,87 @@ void handleEvents(bool &running, GameState& game)
             int textY = spritePanel.y + 25;
             int lineHeight = 20;
 
-            // کلیک روی اسم
-            SDL_Rect nameRect = {textX, textY, 150, 18};
-            if (mx >= nameRect.x && mx <= nameRect.x + nameRect.w &&
-                my >= nameRect.y && my <= nameRect.y + nameRect.h)
+            Sprite* active = getActiveSprite(game);
+            if (active)
             {
-                game.editingMode = true;
-                game.editingField = 0;
-                game.editingBuffer = game.player.name;
-            }
+                // کلیک روی اسم
+                SDL_Rect nameRect = {textX, textY, 150, 18};
+                if (mx >= nameRect.x && mx <= nameRect.x + nameRect.w &&
+                    my >= nameRect.y && my <= nameRect.y + nameRect.h)
+                {
+                    game.editingMode = true;
+                    game.editingField = 0;
+                    game.editingBuffer = active->name;
+                }
 
-            // کلیک روی X
-            SDL_Rect xRect = {textX, textY + lineHeight, 100, 18};
-            if (mx >= xRect.x && mx <= xRect.x + xRect.w &&
-                my >= xRect.y && my <= xRect.y + xRect.h)
-            {
-                game.editingMode = true;
-                game.editingField = 1;
-                char buffer[50];
-                sprintf(buffer, "%.1f", game.player.x);
-                game.editingBuffer = buffer;
-            }
+                // کلیک روی X
+                SDL_Rect xRect = {textX, textY + lineHeight, 100, 18};
+                if (mx >= xRect.x && mx <= xRect.x + xRect.w &&
+                    my >= xRect.y && my <= xRect.y + xRect.h)
+                {
+                    game.editingMode = true;
+                    game.editingField = 1;
+                    char buffer[50];
+                    sprintf(buffer, "%.1f", active->x);
+                    game.editingBuffer = buffer;
+                }
 
-            // کلیک روی Y
-            SDL_Rect yRect = {textX + 120, textY + lineHeight, 100, 18};
-            if (mx >= yRect.x && mx <= yRect.x + yRect.w &&
-                my >= yRect.y && my <= yRect.y + yRect.h)
-            {
-                game.editingMode = true;
-                game.editingField = 2;
-                char buffer[50];
-                sprintf(buffer, "%.1f", game.player.y);
-                game.editingBuffer = buffer;
-            }
+                // کلیک روی Y
+                SDL_Rect yRect = {textX + 120, textY + lineHeight, 100, 18};
+                if (mx >= yRect.x && mx <= yRect.x + yRect.w &&
+                    my >= yRect.y && my <= yRect.y + yRect.h)
+                {
+                    game.editingMode = true;
+                    game.editingField = 2;
+                    char buffer[50];
+                    sprintf(buffer, "%.1f", active->y);
+                    game.editingBuffer = buffer;
+                }
 
-            // کلیک روی Size
-            SDL_Rect sizeRect = {textX, textY + lineHeight * 2, 100, 18};
-            if (mx >= sizeRect.x && mx <= sizeRect.x + sizeRect.w &&
-                my >= sizeRect.y && my <= sizeRect.y + sizeRect.h)
-            {
-                game.editingMode = true;
-                game.editingField = 3;
-                char buffer[50];
-                sprintf(buffer, "%d", game.player.w);
-                game.editingBuffer = buffer;
-            }
+                // کلیک روی Size
+                SDL_Rect sizeRect = {textX, textY + lineHeight * 2, 100, 18};
+                if (mx >= sizeRect.x && mx <= sizeRect.x + sizeRect.w &&
+                    my >= sizeRect.y && my <= sizeRect.y + sizeRect.h)
+                {
+                    game.editingMode = true;
+                    game.editingField = 3;
+                    char buffer[50];
+                    sprintf(buffer, "%d", active->w);
+                    game.editingBuffer = buffer;
+                }
 
-            // کلیک روی Direction
-            SDL_Rect dirRect = {textX, textY + lineHeight * 3, 100, 18};
-            if (mx >= dirRect.x && mx <= dirRect.x + dirRect.w &&
-                my >= dirRect.y && my <= dirRect.y + dirRect.h)
-            {
-                game.editingMode = true;
-                game.editingField = 4;
-                char buffer[50];
-                sprintf(buffer, "%.1f", game.player.direction);
-                game.editingBuffer = buffer;
-            }
+                // کلیک روی Direction
+                SDL_Rect dirRect = {textX, textY + lineHeight * 3, 100, 18};
+                if (mx >= dirRect.x && mx <= dirRect.x + dirRect.w &&
+                    my >= dirRect.y && my <= dirRect.y + dirRect.h)
+                {
+                    game.editingMode = true;
+                    game.editingField = 4;
+                    char buffer[50];
+                    sprintf(buffer, "%.1f", active->direction);
+                    game.editingBuffer = buffer;
+                }
 
-            // کلیک روی Visible toggle
-            SDL_Rect visibleRect = {textX, textY + lineHeight * 4, 80, 18};
-            if (mx >= visibleRect.x && mx <= visibleRect.x + visibleRect.w &&
-                my >= visibleRect.y && my <= visibleRect.y + visibleRect.h)
-            {
-                game.player.visible = !game.player.visible;
-            }
+                // کلیک روی Visible toggle
+                SDL_Rect visibleRect = {textX, textY + lineHeight * 4, 80, 18};
+                if (mx >= visibleRect.x && mx <= visibleRect.x + visibleRect.w &&
+                    my >= visibleRect.y && my <= visibleRect.y + visibleRect.h)
+                {
+                    active->visible = !active->visible;
+                    log_info(("Visible toggled: " + string(active->visible ? "Yes" : "No")).c_str());
+                }
 
-            // کلیک روی Volume
-            SDL_Rect volumeRect = {textX, textY + lineHeight * 5, 100, 18};
-            if (mx >= volumeRect.x && mx <= volumeRect.x + volumeRect.w &&
-                my >= volumeRect.y && my <= volumeRect.y + volumeRect.h)
-            {
-                game.editingMode = true;
-                game.editingField = 5;
-                char buffer[50];
-                sprintf(buffer, "%d", game.volume);
-                game.editingBuffer = buffer;
+                // کلیک روی Volume
+                SDL_Rect volumeRect = {textX, textY + lineHeight * 5, 100, 18};
+                if (mx >= volumeRect.x && mx <= volumeRect.x + volumeRect.w &&
+                    my >= volumeRect.y && my <= volumeRect.y + volumeRect.h)
+                {
+                    game.editingMode = true;
+                    game.editingField = 5;
+                    char buffer[50];
+                    sprintf(buffer, "%d", game.volume);
+                    game.editingBuffer = buffer;
+                }
             }
         }
 
@@ -858,6 +940,7 @@ void handleEvents(bool &running, GameState& game)
                     my >= blockRect.y && my <= blockRect.y + blockRect.h)
                 {
                     game.program.erase(game.program.begin() + i);
+                    log_info("Block deleted");
                     break;
                 }
             }
@@ -875,6 +958,12 @@ void handleEvents(bool &running, GameState& game)
             game.resetButton.isPressed = false;
             game.saveButton.isPressed = false;
             game.loadButton.isPressed = false;
+
+            game.addSpriteBtn.isPressed = false;
+            game.deleteSpriteBtn.isPressed = false;
+            game.prevSpriteBtn.isPressed = false;
+            game.nextSpriteBtn.isPressed = false;
+
             game.moveCategoryBtn.isPressed = false;
             game.looksCategoryBtn.isPressed = false;
             game.soundCategoryBtn.isPressed = false;
@@ -893,58 +982,61 @@ void handleEvents(bool &running, GameState& game)
         double moveSpeed = 3.0;
         bool moved = false;
 
+        Sprite* active = getActiveSprite(game);
+        if (!active) return;
+
         if (keys[SDL_SCANCODE_UP])
         {
-            game.player.y -= moveSpeed;
+            active->y -= moveSpeed;
             moved = true;
         }
         if (keys[SDL_SCANCODE_DOWN])
         {
-            game.player.y += moveSpeed;
+            active->y += moveSpeed;
             moved = true;
         }
         if (keys[SDL_SCANCODE_LEFT])
         {
-            game.player.x -= moveSpeed;
+            active->x -= moveSpeed;
             moved = true;
         }
         if (keys[SDL_SCANCODE_RIGHT])
         {
-            game.player.x += moveSpeed;
+            active->x += moveSpeed;
             moved = true;
         }
 
-        if (game.player.x < 0) game.player.x = 0;
-        if (game.player.y < 0) game.player.y = 0;
-        if (game.player.x + game.player.w > game.screenWidth)
-            game.player.x = game.screenWidth - game.player.w;
-        if (game.player.y + game.player.h > game.screenHeight)
-            game.player.y = game.screenHeight - game.player.h;
+        if (active->x < 0) active->x = 0;
+        if (active->y < 0) active->y = 0;
+        if (active->x + active->w > game.screenWidth)
+            active->x = game.screenWidth - active->w;
+        if (active->y + active->h > game.screenHeight)
+            active->y = game.screenHeight - active->h;
 
-        if (game.player.penDown && moved)
+        if (active->penDown && moved)
         {
-            double centerX = game.player.x + game.player.w / 2;
-            double centerY = game.player.y + game.player.h / 2;
+            double centerX = active->x + active->w / 2;
+            double centerY = active->y + active->h / 2;
 
-            if (centerX != game.player.lastPenX || centerY != game.player.lastPenY)
+            if (centerX != active->lastPenX || centerY != active->lastPenY)
             {
-                game.penX1.push_back((int)game.player.lastPenX);
-                game.penY1.push_back((int)game.player.lastPenY);
+                game.penX1.push_back((int)active->lastPenX);
+                game.penY1.push_back((int)active->lastPenY);
                 game.penX2.push_back((int)centerX);
                 game.penY2.push_back((int)centerY);
-                game.penR_.push_back(game.player.penR);
-                game.penG_.push_back(game.player.penG);
-                game.penB_.push_back(game.player.penB);
-                game.penSize_.push_back(game.player.penSize);
+                game.penR_.push_back(active->penR);
+                game.penG_.push_back(active->penG);
+                game.penB_.push_back(active->penB);
+                game.penSize_.push_back(active->penSize);
 
-                game.player.lastPenX = centerX;
-                game.player.lastPenY = centerY;
+                active->lastPenX = centerX;
+                active->lastPenY = centerY;
             }
         }
-        else if (!game.player.penDown)
+        else if (!active->penDown)
         {
-            game.player.lastPenX = game.player.x + game.player.w / 2;
-            game.player.lastPenY = game.player.y + game.player.h / 2;
+            active->lastPenX = active->x + active->w / 2;
+            active->lastPenY = active->y + active->h / 2;
         }
     }
 }
@@ -972,11 +1064,20 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_Rect menuBar = {0, 0, game.screenWidth, 60};
     SDL_SetRenderDrawColor(renderer, 70, 150, 70, 255);
     SDL_RenderFillRect(renderer, &menuBar);
-
-    // لوگو
-    filledCircleRGBA(renderer, 40, 30, 20, 255, 255, 255, 255);
     SDL_Color white = {255,255,255,255};
-    renderText(renderer, "Scratch", 70, 20, white);
+// لوگو
+
+    if (game.logoTexture)
+    {
+        SDL_Rect logoRect = {20, 10, 40, 40};
+        SDL_RenderCopy(renderer, game.logoTexture, NULL, &logoRect);
+    }
+    else
+    {
+        filledCircleRGBA(renderer, 40, 30, 20, 255, 255, 255, 255);
+    }
+    renderText(renderer, "Sharif University of Technology", 70, 20, white);
+
 
     // وضعیت اجرا
     if (game.isRunningCode)
@@ -1101,7 +1202,7 @@ void render(SDL_Renderer* renderer, GameState& game)
             int blockY = exampleBlockStartY + i * 45;
             SDL_Rect blockRect = {examplesPanelX + 10, blockY, examplesPanelWidth - 20, 35};
 
-            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255); // بنفش
+            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255);
             SDL_RenderFillRect(renderer, &blockRect);
             SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
             SDL_RenderDrawRect(renderer, &blockRect);
@@ -1227,29 +1328,29 @@ void render(SDL_Renderer* renderer, GameState& game)
 
         // ===== رنگ‌بندی بلوک‌ها بر اساس دسته =====
         if (type >= MOVE_UP && type <= MOVE_RIGHT)
-            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255); // آبی حرکتی
+            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255);
         else if (type >= TURN_RIGHT && type <= GOTO_MOUSE)
-            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255); // آبی حرکتی
+            SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255);
         else if (type >= REPEAT && type <= WAIT)
-            SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255); // نارنجی کنترلی
+            SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255);
         else if (type >= OP_ADD && type <= OP_XOR)
-            SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255); // سبز عملگرها
+            SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255);
         else if (type >= SAY && type <= THINK_FOR)
-            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255); // نیلی ظاهری
+            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
         else if (type >= SHOW && type <= SET_SIZE)
-            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255); // نیلی ظاهری
+            SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255);
         else if (type >= WHEN_GREEN_FLAG && type <= WHEN_BROADCAST)
-            SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255); // زرد رویدادها
+            SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255);
         else if (type >= SET_VARIABLE && type <= HIDE_VARIABLE)
-            SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255); // نارنجی پررنگ متغیرها
+            SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255);
         else if (type >= TOUCHING_MOUSE && type <= RESET_TIMER)
-            SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255); // فیروزه‌ای حسگر
+            SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255);
         else if (type >= PEN_DOWN && type <= CHANGE_PEN_SIZE)
-            SDL_SetRenderDrawColor(renderer, 50, 200, 150, 255); // سبز روشن قلم
+            SDL_SetRenderDrawColor(renderer, 50, 200, 150, 255);
         else if (type >= PLAY_SOUND && type <= SET_VOLUME)
-            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255); // بنفش صدا
+            SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255);
         else
-            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255); // خاکستری
+            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
 
         SDL_RenderFillRect(renderer, &blockRect);
         SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
@@ -1260,7 +1361,6 @@ void render(SDL_Renderer* renderer, GameState& game)
         SDL_Color textColor = black;
         SDL_Color blue = {0, 0, 255, 255};
 
-        // === اولویت با حالت ویرایش ===
         if (game.program[i].editingMode)
         {
             blockText = game.program[i].editingBuffer + "_";
@@ -1268,7 +1368,6 @@ void render(SDL_Renderer* renderer, GameState& game)
         }
         else
         {
-            // تشخیص نوع بلوک و ساختن متن مناسب
             if (type == GOTO_XY && game.program[i].parameters.size() >= 2)
             {
                 blockText = "go to x: " + to_string((int)game.program[i].parameters[0].asNumber()) +
@@ -1402,7 +1501,6 @@ void render(SDL_Renderer* renderer, GameState& game)
             }
             else if (type >= OP_ADD && type <= OP_XOR)
             {
-                // برای عملگرها
                 if (type == OP_ADD) blockText = "0 + 0";
                 else if (type == OP_SUBTRACT) blockText = "0 - 0";
                 else if (type == OP_MULTIPLY) blockText = "0 * 0";
@@ -1421,14 +1519,12 @@ void render(SDL_Renderer* renderer, GameState& game)
             }
             else
             {
-                // اگه هیچکدوم نبود، از eventName استفاده کن
                 blockText = game.program[i].eventName.empty() ? "Block" : game.program[i].eventName;
             }
         }
 
         renderText(renderer, blockText.c_str(), blockRect.x + 5, blockRect.y + 10, textColor);
 
-        // اگه بلوک جاری در حال اجراست، حاشیه زرد
         if (i == game.currentBlockIndex && game.isRunningCode)
         {
             SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
@@ -1451,27 +1547,29 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_RenderDrawRect(renderer, &stage);
     renderText(renderer, "Stage", stage.x + 10, stage.y + 5, black);
 
-    // اسپرایت داخل صحنه
-    if (game.player.visible)
+    // نمایش همه اسپرایت‌ها داخل صحنه
+    for (auto& sprite : game.sprites)
     {
-        int spriteStageX = stage.x + (int)((game.player.x / game.screenWidth) * stage.w);
-        int spriteStageY = stage.y + (int)((game.player.y / game.screenHeight) * stage.h);
+        if (!sprite.visible) continue;
+
+        int spriteStageX = stage.x + (int)((sprite.x / game.screenWidth) * stage.w);
+        int spriteStageY = stage.y + (int)((sprite.y / game.screenHeight) * stage.h);
 
         if (spriteStageX < stage.x) spriteStageX = stage.x;
         if (spriteStageY < stage.y) spriteStageY = stage.y;
-        if (spriteStageX + game.player.w/2 > stage.x + stage.w)
-            spriteStageX = stage.x + stage.w - game.player.w/2;
-        if (spriteStageY + game.player.h/2 > stage.y + stage.h)
-            spriteStageY = stage.y + stage.h - game.player.h/2;
+        if (spriteStageX + sprite.w/2 > stage.x + stage.w)
+            spriteStageX = stage.x + stage.w - sprite.w/2;
+        if (spriteStageY + sprite.h/2 > stage.y + stage.h)
+            spriteStageY = stage.y + stage.h - sprite.h/2;
 
-        SDL_Rect spriteRect = {spriteStageX, spriteStageY, game.player.w/2, game.player.h/2};
+        SDL_Rect spriteRect = {spriteStageX, spriteStageY, sprite.w/2, sprite.h/2};
 
         // کشیدن اسپرایت
-        if (game.player.texture)
+        if (sprite.texture)
         {
             SDL_Point center = {spriteRect.w/2, spriteRect.h/2};
-            double angle = game.player.direction;
-            SDL_RenderCopyEx(renderer, game.player.texture, NULL, &spriteRect, angle, &center, SDL_FLIP_NONE);
+            double angle = sprite.direction;
+            SDL_RenderCopyEx(renderer, sprite.texture, NULL, &spriteRect, angle, &center, SDL_FLIP_NONE);
         }
         else
         {
@@ -1481,37 +1579,43 @@ void render(SDL_Renderer* renderer, GameState& game)
             SDL_RenderDrawRect(renderer, &spriteRect);
         }
 
-        // ===== نمایش نام اسپرایت (با فاصله 15 پیکسل از اسپرایت) =====
-        string spriteName = game.player.name;
-        int nameX = spriteStageX + (game.player.w/4) - (spriteName.length() * 4);
-        int nameY = spriteStageY - 15;  // 15 پیکسل فاصله از بالای اسپرایت
-        renderText(renderer, spriteName.c_str(), nameX, nameY, black);
+        // نمایش نام اسپرایت (با فاصله 15 پیکسل از اسپرایت)
+        string spriteName = sprite.name;
+        int nameX = spriteStageX + (sprite.w/4) - (spriteName.length() * 4);
+        int nameY = spriteStageY - 15;
 
-        // ===== نمایش حباب گفتگو یا فکر (بالاتر از اسم) =====
-        if (!game.player.message.empty())
+        // اگر اسپرایت فعاله، اسم رو آبی نشون بده
+        if (game.activeSpriteIndex >= 0 && &sprite == &game.sprites[game.activeSpriteIndex])
+        {
+            SDL_Color activeColor = {0, 100, 255, 255};
+            renderText(renderer, spriteName.c_str(), nameX, nameY, activeColor);
+        }
+        else
+        {
+            renderText(renderer, spriteName.c_str(), nameX, nameY, black);
+        }
+
+        // نمایش حباب گفتگو یا فکر (بالاتر از اسم)
+        if (!sprite.message.empty())
         {
             int bubbleWidth = 150;
             int bubbleHeight = 50;
-            int bubbleX = spriteStageX + (game.player.w/4) - bubbleWidth/2;
-            int bubbleY = nameY - bubbleHeight - 20;  // 20 پیکسل فاصله از اسم
+            int bubbleX = spriteStageX + (sprite.w/4) - bubbleWidth/2;
+            int bubbleY = nameY - bubbleHeight - 20;
 
-            // محدود کردن به داخل استیج
             if (bubbleX < stage.x) bubbleX = stage.x;
             if (bubbleX + bubbleWidth > stage.x + stage.w)
                 bubbleX = stage.x + stage.w - bubbleWidth;
-            if (bubbleY < stage.y) bubbleY = stage.y + 5;  // اگه از استیج بیرون زد
+            if (bubbleY < stage.y) bubbleY = stage.y + 5;
 
             SDL_Rect bubbleRect = {bubbleX, bubbleY, bubbleWidth, bubbleHeight};
 
-            // رنگ حباب
-            if (game.player.isThinking)
+            if (sprite.isThinking)
             {
-                // حباب فکر (خاکستری روشن با حاشیه نقطه‌چین)
                 SDL_SetRenderDrawColor(renderer, 220, 220, 220, 255);
                 SDL_RenderFillRect(renderer, &bubbleRect);
                 SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
 
-                // رسم حاشیه نقطه‌چین برای فکر
                 for (int i = 0; i < bubbleRect.w; i += 5)
                 {
                     SDL_RenderDrawPoint(renderer, bubbleRect.x + i, bubbleRect.y);
@@ -1525,16 +1629,13 @@ void render(SDL_Renderer* renderer, GameState& game)
             }
             else
             {
-                // حباب گفتگو (سفید با حاشیه سیاه)
                 SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
                 SDL_RenderFillRect(renderer, &bubbleRect);
                 SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
                 SDL_RenderDrawRect(renderer, &bubbleRect);
             }
 
-            // نمایش متن داخل حباب
-            string message = game.player.message;
-            // اگه متن طولانی بود، می‌تونی برش بزنی
+            string message = sprite.message;
             if (message.length() > 20)
                 message = message.substr(0, 17) + "...";
 
@@ -1542,11 +1643,9 @@ void render(SDL_Renderer* renderer, GameState& game)
             int textY = bubbleY + (bubbleHeight - 16) / 2;
             renderText(renderer, message.c_str(), textX, textY, black);
 
-            // ===== دم حباب =====
-            if (game.player.isThinking)
+            if (sprite.isThinking)
             {
-                // دم حباب فکر (سه دایره)
-                int circleX = spriteStageX + game.player.w/4;
+                int circleX = spriteStageX + sprite.w/4;
                 int circleY = bubbleY + bubbleHeight + 5;
 
                 filledCircleRGBA(renderer, circleX - 15, circleY, 5, 220, 220, 220, 255);
@@ -1555,8 +1654,7 @@ void render(SDL_Renderer* renderer, GameState& game)
             }
             else
             {
-                // دم حباب گفتگو (مثلث)
-                int x1 = spriteStageX + game.player.w/4;
+                int x1 = spriteStageX + sprite.w/4;
                 int y1 = bubbleY + bubbleHeight;
                 int x2 = x1 - 10;
                 int y2 = y1 + 10;
@@ -1568,7 +1666,7 @@ void render(SDL_Renderer* renderer, GameState& game)
             }
         }
 
-        if (game.player.penDown)
+        if (sprite.penDown)
         {
             filledCircleRGBA(renderer, spriteRect.x + spriteRect.w + 5, spriteRect.y, 3, 255, 0, 0, 255);
         }
@@ -1584,102 +1682,112 @@ void render(SDL_Renderer* renderer, GameState& game)
 
     renderText(renderer, "Sprite Properties", spritePanel.x + 10, spritePanel.y + 5, black);
 
-    SDL_Rect currentSprite = {spritePanel.x + 10, spritePanel.y + 25, 50, 50};
-
-    if (game.player.texture)
+    // نمایش اسپرایت فعال
+    Sprite* active = getActiveSprite(game);
+    if (active)
     {
-        SDL_RenderCopy(renderer, game.player.texture, NULL, &currentSprite);
+        SDL_Rect currentSprite = {spritePanel.x + 10, spritePanel.y + 25, 50, 50};
+
+        if (active->texture)
+        {
+            SDL_RenderCopy(renderer, active->texture, NULL, &currentSprite);
+        }
+        else
+        {
+            SDL_SetRenderDrawColor(renderer, 255, 150, 150, 255);
+            SDL_RenderFillRect(renderer, &currentSprite);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &currentSprite);
+        }
+
+        // نمایش مشخصات اسپرایت (قابل کلیک)
+        int textX = spritePanel.x + 70;
+        int textY = spritePanel.y + 25;
+        int lineHeight = 20;
+        SDL_Color blue = {0, 0, 255, 255};
+        SDL_Color red = {255, 0, 0, 255};
+
+        // اسم
+        if (game.editingMode && game.editingField == 0)
+        {
+            string displayText = "Name: " + game.editingBuffer + "_";
+            renderText(renderer, displayText.c_str(), textX, textY, blue);
+        }
+        else
+        {
+            string nameText = "Name: " + active->name;
+            renderText(renderer, nameText.c_str(), textX, textY, black);
+        }
+
+        // X و Y
+        char buffer[100];
+        if (game.editingMode && game.editingField == 1)
+        {
+            sprintf(buffer, "X: %s_", game.editingBuffer.c_str());
+            renderText(renderer, buffer, textX, textY + lineHeight, blue);
+        }
+        else
+        {
+            sprintf(buffer, "X: %.1f", active->x);
+            renderText(renderer, buffer, textX, textY + lineHeight, black);
+        }
+
+        if (game.editingMode && game.editingField == 2)
+        {
+            sprintf(buffer, "Y: %s_", game.editingBuffer.c_str());
+            renderText(renderer, buffer, textX + 120, textY + lineHeight, blue);
+        }
+        else
+        {
+            sprintf(buffer, "Y: %.1f", active->y);
+            renderText(renderer, buffer, textX + 120, textY + lineHeight, black);
+        }
+
+        // Size
+        if (game.editingMode && game.editingField == 3)
+        {
+            sprintf(buffer, "Size: %s_", game.editingBuffer.c_str());
+            renderText(renderer, buffer, textX, textY + lineHeight * 2, blue);
+        }
+        else
+        {
+            sprintf(buffer, "Size: %d", active->w);
+            renderText(renderer, buffer, textX, textY + lineHeight * 2, black);
+        }
+
+        // Direction
+        if (game.editingMode && game.editingField == 4)
+        {
+            sprintf(buffer, "Dir: %s_", game.editingBuffer.c_str());
+            renderText(renderer, buffer, textX, textY + lineHeight * 3, blue);
+        }
+        else
+        {
+            sprintf(buffer, "Dir: %.1f", active->direction);
+            renderText(renderer, buffer, textX, textY + lineHeight * 3, black);
+        }
+
+        // Volume
+        if (game.editingMode && game.editingField == 5)
+        {
+            sprintf(buffer, "Volume: %s_ %%", game.editingBuffer.c_str());
+            renderText(renderer, buffer, textX, textY + lineHeight * 5, blue);
+        }
+        else
+        {
+            sprintf(buffer, "Volume: %d %%", game.volume);
+            renderText(renderer, buffer, textX, textY + lineHeight * 5, black);
+        }
+
+        // Visible
+        string visibleText = active->visible ? "Visible: Yes" : "Visible: No";
+        renderText(renderer, visibleText.c_str(), textX, textY + lineHeight * 4, active->visible ? black : red);
     }
     else
     {
-        SDL_SetRenderDrawColor(renderer, 255, 150, 150, 255);
-        SDL_RenderFillRect(renderer, &currentSprite);
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
-        SDL_RenderDrawRect(renderer, &currentSprite);
+        // اگر اسپرایتی وجود نداره
+        renderText(renderer, "No sprite", spritePanel.x + 10, spritePanel.y + 25, black);
     }
-
-    // نمایش مشخصات اسپرایت (قابل کلیک)
-    int textX = spritePanel.x + 70;
-    int textY = spritePanel.y + 25;
-    int lineHeight = 20;
-    SDL_Color blue = {0, 0, 255, 255};
-    SDL_Color red = {255, 0, 0, 255};
-
-    // اسم
-    if (game.editingMode && game.editingField == 0)
-    {
-        string displayText = "Name: " + game.editingBuffer + "_";
-        renderText(renderer, displayText.c_str(), textX, textY, blue);
-    }
-    else
-    {
-        string nameText = "Name: " + game.player.name;
-        renderText(renderer, nameText.c_str(), textX, textY, black);
-    }
-
-    // X و Y
-    char buffer[100];
-    if (game.editingMode && game.editingField == 1)
-    {
-        sprintf(buffer, "X: %s_", game.editingBuffer.c_str());
-        renderText(renderer, buffer, textX, textY + lineHeight, blue);
-    }
-    else
-    {
-        sprintf(buffer, "X: %.1f", game.player.x);
-        renderText(renderer, buffer, textX, textY + lineHeight, black);
-    }
-
-    if (game.editingMode && game.editingField == 2)
-    {
-        sprintf(buffer, "Y: %s_", game.editingBuffer.c_str());
-        renderText(renderer, buffer, textX + 120, textY + lineHeight, blue);
-    }
-    else
-    {
-        sprintf(buffer, "Y: %.1f", game.player.y);
-        renderText(renderer, buffer, textX + 120, textY + lineHeight, black);
-    }
-
-    // Size
-    if (game.editingMode && game.editingField == 3)
-    {
-        sprintf(buffer, "Size: %s_", game.editingBuffer.c_str());
-        renderText(renderer, buffer, textX, textY + lineHeight * 2, blue);
-    }
-    else
-    {
-        sprintf(buffer, "Size: %d", game.player.w);
-        renderText(renderer, buffer, textX, textY + lineHeight * 2, black);
-    }
-
-    // Direction
-    if (game.editingMode && game.editingField == 4)
-    {
-        sprintf(buffer, "Dir: %s_", game.editingBuffer.c_str());
-        renderText(renderer, buffer, textX, textY + lineHeight * 3, blue);
-    }
-    else
-    {
-        sprintf(buffer, "Dir: %.1f", game.player.direction);
-        renderText(renderer, buffer, textX, textY + lineHeight * 3, black);
-    }
-
-    // Volume
-    if (game.editingMode && game.editingField == 5)
-    {
-        sprintf(buffer, "Volume: %s_ %%", game.editingBuffer.c_str());
-        renderText(renderer, buffer, textX, textY + lineHeight * 5, blue);
-    }
-    else
-    {
-        sprintf(buffer, "Volume: %d %%", game.volume);
-        renderText(renderer, buffer, textX, textY + lineHeight * 5, black);
-    }
-
-    // Visible
-    string visibleText = game.player.visible ? "Visible: Yes" : "Visible: No";
-    renderText(renderer, visibleText.c_str(), textX, textY + lineHeight * 4, game.player.visible ? black : red);
 
     if (game.isPlayingSound)
     {
@@ -1764,4 +1872,58 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &loadRect);
     renderText(renderer, "Load", loadRect.x+30, loadRect.y+12, white);
+
+    // در تابع render، بخش دکمه‌های مدیریت اسپرایت رو اینطور تغییر بده:
+
+// دکمه‌های مدیریت اسپرایت
+    int spriteBtnStartX = game.screenWidth - 350;  // فاصله از راست صفحه
+
+// Add Sprite
+    SDL_Rect addRect = {spriteBtnStartX, buttonY, 60, buttonHeight};  // کوچکترش کردم
+    if (game.addSpriteBtn.isPressed)
+        SDL_SetRenderDrawColor(renderer, 0, 150, 0, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 0, 100, 0, 255);
+    SDL_RenderFillRect(renderer, &addRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &addRect);
+    renderText(renderer, "+", addRect.x+25, addRect.y+12, white);  // فقط یه علامت +
+
+// Delete Sprite
+    SDL_Rect delRect = {spriteBtnStartX + 70, buttonY, 60, buttonHeight};
+    if (game.deleteSpriteBtn.isPressed)
+        SDL_SetRenderDrawColor(renderer, 150, 0, 0, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 100, 0, 0, 255);
+    SDL_RenderFillRect(renderer, &delRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &delRect);
+    renderText(renderer, "-", delRect.x+25, delRect.y+12, white);
+
+// Previous Sprite
+    SDL_Rect prevRect = {spriteBtnStartX + 140, buttonY, 40, buttonHeight};
+    if (game.prevSpriteBtn.isPressed)
+        SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_RenderFillRect(renderer, &prevRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &prevRect);
+    renderText(renderer, "<", prevRect.x+15, prevRect.y+12, white);
+
+// Next Sprite
+    SDL_Rect nextRect = {spriteBtnStartX + 190, buttonY, 40, buttonHeight};
+    if (game.nextSpriteBtn.isPressed)
+        SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+    SDL_RenderFillRect(renderer, &nextRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &nextRect);
+    renderText(renderer, ">", nextRect.x+15, nextRect.y+12, white);
+
+// نمایش شماره اسپرایت (با فاصله مناسب)
+    char spriteCount[50];
+    sprintf(spriteCount, "%d/%d", game.activeSpriteIndex + 1, game.sprites.size());
+    renderText(renderer, spriteCount, nextRect.x + 50, nextRect.y + 12, black);
 }
