@@ -18,7 +18,8 @@ add_executable(FoP main.cpp
         operators.h
         looks.h
         logger.h
-        logger.cpp)
+        logger.cpp
+        filedialog.h)
 
 target_link_libraries(${PROJECT_NAME}
         -lmingw32
@@ -27,4 +28,5 @@ target_link_libraries(${PROJECT_NAME}
         -lSDL2_ttf
         -lSDL2_image
         -lSDL2_mixer
+        comdlg32
 )

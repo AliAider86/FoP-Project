@@ -14,6 +14,16 @@ enum BlockType
     MOVE_DOWN,
     MOVE_LEFT,
     MOVE_RIGHT,
+    TURN_RIGHT,
+    TURN_LEFT,
+    GOTO_XY,
+    CHANGE_X,
+    CHANGE_Y,
+    SET_X,
+    SET_Y,
+    POINT_DIRECTION,
+    GOTO_RANDOM,
+    GOTO_MOUSE,
 
     // کنترلی (نارنجی)
     REPEAT,
@@ -61,56 +71,17 @@ enum BlockType
     SHOW_VARIABLE,
     HIDE_VARIABLE,
 
-    TURN_RIGHT,
-    TURN_LEFT,
-    GOTO_XY,
-    CHANGE_X,
-    CHANGE_Y,
-    SET_X,
-    SET_Y,
-    POINT_DIRECTION,
-    GOTO_RANDOM,
-    GOTO_MOUSE,
-
+    // رویدادها (زرد) - WITHOUT BROADCAST
     WHEN_GREEN_FLAG,
     WHEN_KEY_PRESSED,
     WHEN_SPRITE_CLICKED,
-    WHEN_BACKDROP_SWITCHES,  // اینو اضافه کن
-    WHEN_BROADCAST,          // اینو اضافه کن
-    BROADCAST,               // اینو اضافه کن
-    BROADCAST_AND_WAIT,      // اینو اضافه کن
 
-
-    TOUCHING_MOUSE,
-    TOUCHING_EDGE,
-    TOUCHING_SPRITE,
-    TOUCHING_COLOR,
-    DISTANCE_TO_MOUSE,
-    DISTANCE_TO_SPRITE,
-    ASK,
-    ANSWER,
-    KEY_PRESSED,
-    MOUSE_DOWN,
-    MOUSE_X,
-    MOUSE_Y,
-    DRAG_MODE,
-    TIMER,
-    RESET_TIMER,
-
-    PEN_CLEAR,
-    PEN_STAMP,
-    PEN_DOWN,
-    PEN_UP,
-    SET_PEN_COLOR,
-    CHANGE_PEN_COLOR,
-    SET_PEN_SIZE,
-    CHANGE_PEN_SIZE,
-
+    // صدا (بنفش)
     PLAY_SOUND,
     PLAY_SOUND_UNTIL_DONE,
     STOP_ALL_SOUNDS,
     CHANGE_VOLUME,
-    SET_VOLUME,
+    SET_VOLUME
 };
 
 struct Block
@@ -119,13 +90,12 @@ struct Block
     vector<Value> parameters;
     int repeatCount;
     string variableName;
-    string eventName;     // برای BROADCAST و WHEN_BROADCAST و ذخیره نام بلوک
-    int keyCode;          // برای WHEN_KEY_PRESSED
+    string eventName;
+    int keyCode;
 
-    // برای ویرایش بلوک - این سه خط رو اضافه کن
-    bool editingMode;     // آیا در حال ویرایش هستیم؟
-    int editingField;     // کدوم فیلد در حال ویرایشه (0=پارامتر اول، 1=پارامتر دوم، ...)
-    string editingBuffer; // متن در حال ویرایش
+    bool editingMode;
+    int editingField;
+    string editingBuffer;
 
     Block() : repeatCount(0), keyCode(0), editingMode(false), editingField(-1) {}
     Block(BlockType t) : type(t), repeatCount(0), keyCode(0), editingMode(false), editingField(-1) {}

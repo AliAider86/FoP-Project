@@ -2,6 +2,7 @@
 #include <SDL2/SDL_ttf.h>
 #include <SDL2/SDL_image.h>
 #include <SDL2/SDL_mixer.h>
+#include <string.h>
 #include "engine.h"
 #include "ui.h"
 #include "logger.h"
@@ -31,23 +32,43 @@ bool loadSpriteTexture(Sprite* sprite, SDL_Renderer* renderer, const char* path)
     }
 
     SDL_Surface* surface = IMG_Load(path);
-    if (!surface) return false;
+    if (!surface)
+    {
+        log_error(("Failed to load image: " + string(path) + " - " + string(IMG_GetError())).c_str());
+        return false;
+    }
 
     sprite->texture = SDL_CreateTextureFromSurface(renderer, surface);
     if (!sprite->texture)
     {
+        log_error(("Failed to create texture: " + string(SDL_GetError())).c_str());
         SDL_FreeSurface(surface);
         return false;
     }
 
-    // سایز ثابت 50 پیکسل (مهم نیست عکس اصلی چقدر بزرگه)
-    sprite->w = 150;
-    sprite->h = 150;
+    sprite->w = surface->w;
+    sprite->h = surface->h;
+
+    if (sprite->w > 100 || sprite->h > 100)
+    {
+        double ratio = (double)sprite->w / sprite->h;
+        if (sprite->w > 100)
+        {
+            sprite->w = 100;
+            sprite->h = (int)(100 / ratio);
+        }
+        if (sprite->h > 100)
+        {
+            sprite->h = 100;
+            sprite->w = (int)(100 * ratio);
+        }
+        log_debug(("Resized large sprite to: " + to_string(sprite->w) + "x" + to_string(sprite->h)).c_str());
+    }
 
     sprite->imagePath = path;
     SDL_FreeSurface(surface);
 
-    log_info(("Image loaded and set to 50x50: " + string(path)).c_str());
+    log_info(("Image loaded: " + string(path) + " (" + to_string(sprite->w) + "x" + to_string(sprite->h) + ")").c_str());
     return true;
 }
 
@@ -63,10 +84,10 @@ void renderText(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Colo
     SDL_DestroyTexture(texture);
 }
 
-// --- تابع کمکی برای اضافه کردن اسپرایت جدید ---
 void addDefaultSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath)
 {
     Sprite newSprite;
+
     newSprite.x = game.screenWidth / 2 - 25;
     newSprite.y = game.screenHeight / 2 - 25;
     newSprite.w = 50;
@@ -76,37 +97,84 @@ void addDefaultSprite(GameState& game, SDL_Renderer* renderer, const char* name,
     newSprite.name = name;
     newSprite.message = "";
     newSprite.isThinking = false;
-    newSprite.penDown = false;
-    newSprite.penSize = 1;
-    newSprite.penR = 0;
-    newSprite.penG = 0;
-    newSprite.penB = 0;
     newSprite.texture = nullptr;
     newSprite.imagePath = imagePath ? imagePath : "";
     newSprite.index = game.sprites.size();
     newSprite.isActive = false;
 
-    // بارگذاری تصویر اگر مسیر داده شده
-    if (imagePath && renderer)
-        loadSpriteTexture(&newSprite, renderer, imagePath);
+    if (imagePath && renderer && strlen(imagePath) > 0)
+    {
+        bool loaded = loadSpriteTexture(&newSprite, renderer, imagePath);
+        if (!loaded)
+        {
+            log_warning(("Failed to load image: " + string(imagePath) + ", using rectangle").c_str());
+            newSprite.w = 50;
+            newSprite.h = 50;
+        }
+    }
+    else
+    {
+        log_warning(("No image path provided for sprite: " + string(name) + ", using rectangle").c_str());
+        newSprite.w = 50;
+        newSprite.h = 50;
+    }
 
     game.sprites.push_back(newSprite);
-    log_info(("Sprite added: " + string(name)).c_str());
+    log_info(("Sprite added: " + string(name) + " - size: " + to_string(newSprite.w) + "x" + to_string(newSprite.h)).c_str());
+}
+
+void initDefaultBackdrops(GameState& game, SDL_Renderer* renderer)
+{
+    const char* defaultBackdrops[] = {
+            "backdrops/blue_sky.png",
+            "backdrops/green_field.png",
+            "backdrops/space.png",
+            "backdrops/underwater.png"
+    };
+
+    const char* backdropNames[] = {
+            "Blue Sky",
+            "Green Field",
+            "Space",
+            "Underwater"
+    };
+
+    for (int i = 0; i < 4; i++)
+    {
+        Backdrop b;
+        b.name = backdropNames[i];
+        b.filePath = defaultBackdrops[i];
+        b.isCustom = false;
+
+        SDL_Surface* surface = IMG_Load(defaultBackdrops[i]);
+        if (surface)
+        {
+            b.texture = SDL_CreateTextureFromSurface(renderer, surface);
+            SDL_FreeSurface(surface);
+            log_info(("Loaded backdrop: " + string(backdropNames[i])).c_str());
+        }
+        else
+        {
+            b.texture = nullptr;
+            log_warning(("Could not load backdrop: " + string(defaultBackdrops[i])).c_str());
+        }
+
+        game.backdrops.push_back(b);
+    }
+
+    game.currentBackdrop = 0;
 }
 
 int main(int argc, char* argv[])
 {
     log_info("Program started");
 
-
     GameState game;
     game.sprites = vector<Sprite>();
     game.activeSpriteIndex = -1;
-// ... بقیه مقداردهی‌ها رو هم می‌تونی بعداً انجام بدی
-
-    // --- مقداردهی اولیه درست vector ---
-    game.sprites = vector<Sprite>();  // اینجا مطمئن میشیم خالی شروع میشه
-    game.activeSpriteIndex = -1;  // هیچ اسپرایتی فعال نیست
+    game.editingMode = false;
+    game.editingField = -1;
+    game.editingBuffer = "";
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0)
     {
@@ -163,7 +231,7 @@ int main(int argc, char* argv[])
     }
     log_info("Renderer created");
 
-    g_font = TTF_OpenFont("consolas.ttf", 18);
+    g_font = TTF_OpenFont("arial.ttf", 18);
     if (!g_font)
     {
         log_error("Failed to load font, trying arial.ttf");
@@ -185,7 +253,6 @@ int main(int argc, char* argv[])
         if (game.logoTexture)
         {
             log_info("Logo texture created");
-            printf("Logo pointer: %p\n", game.logoTexture);  // توی کنسول ببین
         }
         else
         {
@@ -202,12 +269,8 @@ int main(int argc, char* argv[])
     game.screenWidth = dm.w;
     game.screenHeight = dm.h;
 
-    // --- اضافه کردن چند اسپرایت پیش‌فرض (بعد از ست شدن screenWidth/screenHeight) ---
     addDefaultSprite(game, renderer, "Cat1", "cat.png");
-    addDefaultSprite(game, renderer, "Cat2", "cat.png");
-    addDefaultSprite(game, renderer, "Cat3", "cat.png");
 
-    // فعال کردن اولین اسپرایت
     if (game.sprites.size() > 0)
     {
         game.activeSpriteIndex = 0;
@@ -223,18 +286,23 @@ int main(int argc, char* argv[])
     int buttonSpacing = 10;
     int startX = (game.screenWidth - (6 * (buttonWidth + buttonSpacing))) / 2;
 
+    int spriteBtnStartX = game.screenWidth - 350;
+    game.addSpriteBtn = (Button){spriteBtnStartX, buttonY, 60, buttonHeight, 0};
+    game.deleteSpriteBtn = (Button){spriteBtnStartX + 70, buttonY, 60, buttonHeight, 0};
+    game.prevSpriteBtn = (Button){spriteBtnStartX + 140, buttonY, 40, buttonHeight, 0};
+    game.nextSpriteBtn = (Button){spriteBtnStartX + 190, buttonY, 40, buttonHeight, 0};
+
+    int backdropStartX = 50;
+    game.prevBackdropBtn = (Button){backdropStartX, buttonY, 30, buttonHeight, 0};
+    game.nextBackdropBtn = (Button){backdropStartX + 40, buttonY, 30, buttonHeight, 0};
+    game.uploadBackdropBtn = (Button){backdropStartX + 80, buttonY, 100, buttonHeight, 0};
+
     game.runButton = (Button){startX, buttonY, buttonWidth, buttonHeight, 0};
     game.pauseButton = (Button){startX + buttonWidth + buttonSpacing, buttonY, buttonWidth, buttonHeight, 0};
     game.stepButton = (Button){startX + 2*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight, 0};
     game.resetButton = (Button){startX + 3*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight, 0};
     game.saveButton = (Button){startX + 4*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight, 0};
     game.loadButton = (Button){startX + 5*(buttonWidth + buttonSpacing), buttonY, buttonWidth, buttonHeight, 0};
-
-    // --- دکمه‌های مدیریت اسپرایت ---
-    game.addSpriteBtn = (Button){startX - 120, buttonY, 100, buttonHeight, 0};
-    game.deleteSpriteBtn = (Button){startX - 230, buttonY, 100, buttonHeight, 0};
-    game.prevSpriteBtn = (Button){startX - 340, buttonY, 50, buttonHeight, 0};
-    game.nextSpriteBtn = (Button){startX - 280, buttonY, 50, buttonHeight, 0};
 
     int toolPanelWidth = 180;
     game.moveCategoryBtn = (Button){20, 110, toolPanelWidth-20, 35, 0};
@@ -246,6 +314,7 @@ int main(int argc, char* argv[])
     game.operatorsCategoryBtn = (Button){20, 380, toolPanelWidth-20, 35, 0};
     game.variablesCategoryBtn = (Button){20, 425, toolPanelWidth-20, 35, 0};
 
+    initDefaultBackdrops(game, renderer);
 
     game.volume = 100;
     game.showSpriteName = 1;
@@ -268,7 +337,6 @@ int main(int argc, char* argv[])
         SDL_Delay(16);
     }
 
-    // پاکسازی texture همه اسپرایت‌ها
     for (auto& sprite : game.sprites)
     {
         if (sprite.texture)
@@ -290,7 +358,6 @@ int main(int argc, char* argv[])
 
     log_info("Program ended");
 
-    // بعد از حلقه اصلی، قبل از خروج
     if (game.logoTexture)
     {
         SDL_DestroyTexture(game.logoTexture);

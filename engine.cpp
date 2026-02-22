@@ -3,13 +3,125 @@
 #include <fstream>
 #include <sstream>
 #include <cmath>
+#include <SDL2/SDL_image.h>
 #include "engine.h"
 #include "operators.h"
 #include "logger.h"
 
 using namespace std;
 
-// --- توابع کمکی برای مدیریت اسپرایت‌ها ---
+extern bool loadSpriteTexture(Sprite* sprite, SDL_Renderer* renderer, const char* path);
+
+void addCustomBackdrop(GameState& game, SDL_Renderer* renderer, const char* filePath)
+{
+    if (!filePath || filePath[0] == '\0') return;
+
+    Backdrop b;
+    string path = filePath;
+    size_t pos = path.find_last_of("/\\");
+    string fileName = (pos != string::npos) ? path.substr(pos + 1) : path;
+    size_t dotPos = fileName.find_last_of(".");
+    string nameWithoutExt = (dotPos != string::npos) ? fileName.substr(0, dotPos) : fileName;
+
+    b.name = "Custom: " + nameWithoutExt;
+    b.filePath = filePath;
+    b.isCustom = true;
+
+    SDL_Surface* surface = IMG_Load(filePath);
+    if (surface)
+    {
+        b.texture = SDL_CreateTextureFromSurface(renderer, surface);
+        SDL_FreeSurface(surface);
+        game.backdrops.push_back(b);
+        game.currentBackdrop = game.backdrops.size() - 1;
+        log_info(("Custom backdrop added: " + string(filePath)).c_str());
+    }
+    else
+    {
+        log_error(("Failed to load custom backdrop: " + string(filePath) + " - " + string(IMG_GetError())).c_str());
+    }
+}
+
+void reloadAllTextures(GameState& game, SDL_Renderer* renderer)
+{
+    for (auto& sprite : game.sprites)
+    {
+        if (!sprite.imagePath.empty())
+        {
+            if (sprite.texture)
+            {
+                SDL_DestroyTexture(sprite.texture);
+                sprite.texture = nullptr;
+            }
+
+            SDL_Surface* surface = IMG_Load(sprite.imagePath.c_str());
+            if (!surface)
+            {
+                char* basePath = SDL_GetBasePath();
+                if (basePath)
+                {
+                    string fullPath = string(basePath) + sprite.imagePath;
+                    SDL_free(basePath);
+                    surface = IMG_Load(fullPath.c_str());
+                }
+            }
+
+            if (surface)
+            {
+                sprite.texture = SDL_CreateTextureFromSurface(renderer, surface);
+                if (sprite.texture)
+                {
+                    SDL_QueryTexture(sprite.texture, NULL, NULL, &sprite.w, &sprite.h);
+                    log_info(("Reloaded texture for: " + sprite.name).c_str());
+                }
+                SDL_FreeSurface(surface);
+            }
+            else
+            {
+                log_warning(("Failed to reload texture for " + sprite.name).c_str());
+                sprite.w = 50;
+                sprite.h = 50;
+            }
+        }
+    }
+
+    for (auto& b : game.backdrops)
+    {
+        if (!b.filePath.empty())
+        {
+            if (b.texture)
+            {
+                SDL_DestroyTexture(b.texture);
+                b.texture = nullptr;
+            }
+
+            SDL_Surface* surface = IMG_Load(b.filePath.c_str());
+            if (!surface)
+            {
+                char* basePath = SDL_GetBasePath();
+                if (basePath)
+                {
+                    string fullPath = string(basePath) + b.filePath;
+                    SDL_free(basePath);
+                    surface = IMG_Load(fullPath.c_str());
+                }
+            }
+
+            if (surface)
+            {
+                b.texture = SDL_CreateTextureFromSurface(renderer, surface);
+                SDL_FreeSurface(surface);
+                log_info(("Reloaded backdrop: " + b.name).c_str());
+            }
+            else
+            {
+                log_warning(("Failed to reload backdrop: " + b.name).c_str());
+                b.texture = nullptr;
+            }
+        }
+    }
+}
+
 Sprite* getActiveSprite(GameState& game)
 {
     if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
@@ -42,23 +154,13 @@ void addSprite(GameState& game, SDL_Renderer* renderer, const char* name, const 
     newSprite.name = name;
     newSprite.message = "";
     newSprite.isThinking = false;
-    newSprite.penDown = false;
-    newSprite.penSize = 1;
-    newSprite.penR = 0;
-    newSprite.penG = 0;
-    newSprite.penB = 0;
-    newSprite.lastPenX = newSprite.x + newSprite.w/2;
-    newSprite.lastPenY = newSprite.y + newSprite.h/2;
-    newSprite.penMoved = false;
     newSprite.texture = nullptr;
     newSprite.imagePath = imagePath ? imagePath : "";
     newSprite.index = game.sprites.size();
     newSprite.isActive = false;
 
-    // این قسمت مهمه - لود کردن texture
     if (imagePath && renderer && !newSprite.imagePath.empty())
     {
-        extern bool loadSpriteTexture(Sprite* sprite, SDL_Renderer* renderer, const char* path);
         loadSpriteTexture(&newSprite, renderer, newSprite.imagePath.c_str());
     }
 
@@ -91,7 +193,6 @@ void removeSprite(GameState& game, int index)
     }
 }
 
-// --- توابع ذخیره و بارگذاری ---
 void saveProject(const GameState& game, const string& filename)
 {
     log_info(("Saving project to: " + filename).c_str());
@@ -103,25 +204,31 @@ void saveProject(const GameState& game, const string& filename)
         return;
     }
 
-    // ذخیره تعداد اسپرایت‌ها
-    file << "Sprites " << game.sprites.size() << endl;
+    // Backdrops
+    file << "Backdrops " << game.backdrops.size() << "\n";
+    for (const auto& b : game.backdrops)
+    {
+        string safeName = b.name;
+        for (char& c : safeName) if (c == ' ') c = '_';
+        file << safeName << " " << b.filePath << " " << b.isCustom << "\n";
+    }
+    file << "CurrentBackdrop " << game.currentBackdrop << "\n";
 
-    // ذخیره اطلاعات هر اسپرایت
+    // Sprites
+    file << "Sprites " << game.sprites.size() << "\n";
     for (const Sprite& s : game.sprites)
     {
-        file << "Sprite " << s.x << " " << s.y << " "
+        file << "Sprite "
+             << s.x << " " << s.y << " "
              << s.w << " " << s.h << " "
              << s.visible << " " << s.direction << " "
              << s.name << " " << s.imagePath << " "
-             << s.penDown << " " << s.penSize << " "
-             << (int)s.penR << " " << (int)s.penG << " " << (int)s.penB << endl;
+             << s.index << " " << s.isActive << "\n";
     }
+    file << "ActiveSprite " << game.activeSpriteIndex << "\n";
 
-    // ذخیره ایندکس اسپرایت فعال
-    file << "ActiveSprite " << game.activeSpriteIndex << endl;
-
-    // ذخیره بلوک‌ها
-    file << "Blocks " << game.program.size() << endl;
+    // Blocks
+    file << "Blocks " << game.program.size() << "\n";
     for (const Block& b : game.program)
     {
         file << (int)b.type << " " << b.parameters.size() << " ";
@@ -135,20 +242,22 @@ void saveProject(const GameState& game, const string& filename)
                 file << "bool " << v.asBoolean() << " ";
         }
         file << b.repeatCount << " " << b.variableName << " "
-             << b.eventName << " " << b.keyCode << endl;
+             << b.eventName << " " << b.keyCode << " "
+             << b.editingMode << " " << b.editingField << " "
+             << b.editingBuffer << "\n";
     }
 
-    // ذخیره متغیرها
-    file << "Variables " << game.variables.size() << endl;
+    // Variables
+    file << "Variables " << game.variables.size() << "\n";
     for (const auto& var : game.variables)
     {
         file << var.first << " ";
         if (var.second.type == VALUE_NUMBER)
-            file << "num " << var.second.asNumber() << endl;
+            file << "num " << var.second.asNumber() << "\n";
         else if (var.second.type == VALUE_STRING)
-            file << "str " << var.second.asString() << endl;
+            file << "str " << var.second.asString() << "\n";
         else if (var.second.type == VALUE_BOOLEAN)
-            file << "bool " << var.second.asBoolean() << endl;
+            file << "bool " << var.second.asBoolean() << "\n";
     }
 
     file.close();
@@ -166,132 +275,120 @@ void loadProject(GameState& game, const string& filename)
         return;
     }
 
-    // پاک کردن وضعیت قبلی
     for (auto& s : game.sprites)
-    {
-        if (s.texture)
-            SDL_DestroyTexture(s.texture);
-    }
+        if (s.texture) SDL_DestroyTexture(s.texture);
+    for (auto& b : game.backdrops)
+        if (b.texture) SDL_DestroyTexture(b.texture);
 
     game.sprites.clear();
     game.program.clear();
     game.variables.clear();
+    game.backdrops.clear();
     game.scriptStartIndices.clear();
     game.scriptActive.clear();
     game.scriptCurrentBlock.clear();
-    game.penX1.clear();
-    game.penY1.clear();
-    game.penX2.clear();
-    game.penY2.clear();
-    game.penR_.clear();
-    game.penG_.clear();
-    game.penB_.clear();
-    game.penSize_.clear();
+
+    game.editingMode = false;
+    game.editingField = -1;
+    game.editingBuffer = "";
 
     string token;
     while (file >> token)
     {
-        if (token == "Sprites")
+        if (token == "Backdrops")
         {
-            int count;
-            file >> count;
+            int count; file >> count;
+            for (int i = 0; i < count; i++)
+            {
+                Backdrop b; string name;
+                file >> name >> b.filePath >> b.isCustom;
+                for (char& c : name) if (c == '_') c = ' ';
+                b.name = name; b.texture = nullptr;
+                game.backdrops.push_back(b);
+            }
+        }
+        else if (token == "CurrentBackdrop")
+        {
+            file >> game.currentBackdrop;
+        }
+        else if (token == "Sprites")
+        {
+            int count; file >> count;
         }
         else if (token == "Sprite")
         {
-            Sprite s;
-            string name, imagePath;
-            int r, g, b;
+            Sprite s; string name, imagePath, message;
+            int index; bool isActive;
 
             file >> s.x >> s.y >> s.w >> s.h
                  >> s.visible >> s.direction
                  >> name >> imagePath
-                 >> s.penDown >> s.penSize
-                 >> r >> g >> b;
+                 >> index >> isActive;
 
-            s.name = name;
-            s.imagePath = imagePath;
-            s.penR = (Uint8)r;
-            s.penG = (Uint8)g;
-            s.penB = (Uint8)b;
-            s.message = "";
-            s.isThinking = false;
-            s.lastPenX = s.x + s.w/2;
-            s.lastPenY = s.y + s.h/2;
-            s.penMoved = false;
+            s.name = name; s.imagePath = imagePath;
+            s.message = ""; s.isThinking = false;
+            s.index = index; s.isActive = isActive;
             s.texture = nullptr;
-            s.index = game.sprites.size();
-            s.isActive = false;
 
             game.sprites.push_back(s);
         }
         else if (token == "ActiveSprite")
         {
             file >> game.activeSpriteIndex;
-            if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
-                game.sprites[game.activeSpriteIndex].isActive = true;
         }
         else if (token == "Blocks")
         {
-            int count;
-            file >> count;
+            int count; file >> count;
             for (int i = 0; i < count; i++)
             {
-                Block b;
-                int typeInt, paramCount;
+                Block b; int typeInt, paramCount;
                 file >> typeInt >> paramCount;
                 b.type = (BlockType)typeInt;
 
                 for (int j = 0; j < paramCount; j++)
                 {
-                    string valType;
-                    file >> valType;
+                    string valType; file >> valType;
                     if (valType == "num")
                     {
-                        double d;
-                        file >> d;
+                        double d; file >> d;
                         b.parameters.push_back(Value(d));
                     }
                     else if (valType == "str")
                     {
-                        string s;
-                        file >> s;
+                        string s; file >> s;
                         b.parameters.push_back(Value(s));
                     }
                     else if (valType == "bool")
                     {
-                        bool bVal;
-                        file >> bVal;
+                        bool bVal; file >> bVal;
                         b.parameters.push_back(Value(bVal));
                     }
                 }
+
                 file >> b.repeatCount >> b.variableName >> b.eventName >> b.keyCode;
+                b.editingMode = false; b.editingField = -1; b.editingBuffer = "";
                 game.program.push_back(b);
             }
         }
         else if (token == "Variables")
         {
-            int count;
-            file >> count;
+            int count; file >> count;
             for (int i = 0; i < count; i++)
             {
-                string varName, valType;
-                file >> varName >> valType;
+                string varName, valType; file >> varName >> valType;
                 if (valType == "num")
                 {
-                    double d;
-                    file >> d;
+                    double d; file >> d;
                     game.variables[varName] = Value(d);
                 }
                 else if (valType == "str")
                 {
-                    string s;
-                    file >> s;
+                    string s; file >> s;
                     game.variables[varName] = Value(s);
                 }
                 else if (valType == "bool")
                 {
-                    bool b;
-                    file >> b;
+                    bool b; file >> b;
                     game.variables[varName] = Value(b);
                 }
             }
@@ -505,7 +602,6 @@ void update(GameState& game)
                 {
                     activeSprite->message = b.parameters[0].asString();
                     activeSprite->isThinking = (b.type == THINK);
-
                     string msgType = activeSprite->isThinking ? "THINK" : "SAY";
                     log_info((msgType + ": " + activeSprite->message).c_str());
                 }
@@ -694,66 +790,6 @@ void update(GameState& game)
             continue;
         }
 
-        // ===== بلوک‌های قلم =====
-        if (b.type == PEN_DOWN)
-        {
-            activeSprite->penDown = true;
-            activeSprite->lastPenX = activeSprite->x + activeSprite->w/2;
-            activeSprite->lastPenY = activeSprite->y + activeSprite->h/2;
-            activeSprite->penMoved = true;
-            log_info("Pen down");
-            scriptPC++;
-            continue;
-        }
-
-        if (b.type == PEN_UP)
-        {
-            activeSprite->penDown = false;
-            log_info("Pen up");
-            scriptPC++;
-            continue;
-        }
-
-        if (b.type == SET_PEN_COLOR)
-        {
-            if (b.parameters.size() >= 3)
-            {
-                activeSprite->penR = (Uint8)b.parameters[0].asNumber();
-                activeSprite->penG = (Uint8)b.parameters[1].asNumber();
-                activeSprite->penB = (Uint8)b.parameters[2].asNumber();
-                log_info("Pen color changed");
-            }
-            scriptPC++;
-            continue;
-        }
-
-        if (b.type == SET_PEN_SIZE)
-        {
-            if (!b.parameters.empty())
-            {
-                activeSprite->penSize = (int)b.parameters[0].asNumber();
-                if (activeSprite->penSize < 1) activeSprite->penSize = 1;
-                log_info(("Pen size set to: " + to_string(activeSprite->penSize)).c_str());
-            }
-            scriptPC++;
-            continue;
-        }
-
-        if (b.type == PEN_CLEAR)
-        {
-            game.penX1.clear();
-            game.penY1.clear();
-            game.penX2.clear();
-            game.penY2.clear();
-            game.penR_.clear();
-            game.penG_.clear();
-            game.penB_.clear();
-            game.penSize_.clear();
-            log_info("Pen cleared");
-            scriptPC++;
-            continue;
-        }
-
         // ===== بلوک‌های حرکتی =====
         if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
             b.type == TURN_RIGHT || b.type == TURN_LEFT || b.type == GOTO_XY || b.type == CHANGE_X ||
@@ -888,31 +924,6 @@ void update(GameState& game)
 
         scriptPC++;
         safetyCounter++;
-    }
-
-    // رسم خط اگر قلم پایین است (برای همه اسپرایت‌ها)
-    for (auto& sprite : game.sprites)
-    {
-        if (sprite.penDown && sprite.penMoved)
-        {
-            double centerX = sprite.x + sprite.w/2;
-            double centerY = sprite.y + sprite.h/2;
-
-            if (abs(centerX - sprite.lastPenX) > 1 || abs(centerY - sprite.lastPenY) > 1)
-            {
-                game.penX1.push_back((int)sprite.lastPenX);
-                game.penY1.push_back((int)sprite.lastPenY);
-                game.penX2.push_back((int)centerX);
-                game.penY2.push_back((int)centerY);
-                game.penR_.push_back(sprite.penR);
-                game.penG_.push_back(sprite.penG);
-                game.penB_.push_back(sprite.penB);
-                game.penSize_.push_back(sprite.penSize);
-
-                sprite.lastPenX = centerX;
-                sprite.lastPenY = centerY;
-            }
-        }
     }
 
     // پاکسازی اسکریپت‌های غیرفعال

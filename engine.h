@@ -11,6 +11,14 @@
 
 using namespace std;
 
+struct Backdrop
+{
+    SDL_Texture* texture;
+    string name;
+    string filePath;
+    bool isCustom;
+};
+
 struct Button
 {
     int x, y, w, h;
@@ -28,11 +36,7 @@ struct Sprite
     string name;
     bool isThinking;
 
-    bool penDown;
-    int penSize;
-    Uint8 penR, penG, penB;
-    double lastPenX, lastPenY;
-    bool penMoved;
+    // فیلدهای Pen حذف شدند
 
     SDL_Texture* texture;
     string imagePath;
@@ -46,7 +50,6 @@ struct GameState
     int activeSpriteIndex;
 
     vector<Block> program;
-
     int currentBlockIndex;
 
     bool isRunningCode;
@@ -78,6 +81,9 @@ struct GameState
     Button sensingCategoryBtn;
     Button operatorsCategoryBtn;
     Button variablesCategoryBtn;
+    Button uploadBackdropBtn;
+    Button prevBackdropBtn;
+    Button nextBackdropBtn;
 
     int currentCategory;
 
@@ -111,9 +117,7 @@ struct GameState
     Uint32 timerStartTime;
     bool dragMode;
 
-    vector<int> penX1, penY1, penX2, penY2;
-    vector<Uint8> penR_, penG_, penB_;
-    vector<int> penSize_;
+    // وکتورهای Pen حذف شدند
 
     Block selectedBlock;
     bool placingBlock;
@@ -132,15 +136,18 @@ struct GameState
     int dragOffsetX;
     int dragOffsetY;
     int clickedSpriteIndex;
-    SDL_Texture* logoTexture;  // اضافه کن
+    SDL_Texture* logoTexture;
+
+    vector<Backdrop> backdrops;
+    int currentBackdrop;
 };
 
 // توابع اصلی
 void update(GameState& game);
 void saveProject(const GameState& game, const string& filename);
 void loadProject(GameState& game, const string& filename);
+void reloadAllTextures(GameState& game, SDL_Renderer* renderer);
 
-// --- توابع مدیریت اسپرایت (اعلان‌ها) ---
 Sprite* getActiveSprite(GameState& game);
 void setActiveSprite(GameState& game, int index);
 void addSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath);
