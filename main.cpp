@@ -169,12 +169,8 @@ int main(int argc, char* argv[])
 {
     log_info("Program started");
 
+    // استفاده از سازنده GameState برای مقداردهی خودکار
     GameState game;
-    game.sprites = vector<Sprite>();
-    game.activeSpriteIndex = -1;
-    game.editingMode = false;
-    game.editingField = -1;
-    game.editingBuffer = "";
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0)
     {
@@ -269,7 +265,7 @@ int main(int argc, char* argv[])
     game.screenWidth = dm.w;
     game.screenHeight = dm.h;
 
-    addDefaultSprite(game, renderer, "Cat1", "cat.png");
+    addDefaultSprite(game, renderer, "Sprite1", "cat.png");
 
     if (game.sprites.size() > 0)
     {
@@ -313,8 +309,10 @@ int main(int argc, char* argv[])
     game.sensingCategoryBtn = (Button){20, 335, toolPanelWidth-20, 35, 0};
     game.operatorsCategoryBtn = (Button){20, 380, toolPanelWidth-20, 35, 0};
     game.variablesCategoryBtn = (Button){20, 425, toolPanelWidth-20, 35, 0};
+    game.penCategoryBtn = (Button){20, 470, toolPanelWidth-20, 35, 0}; // اضافه شد
 
     initDefaultBackdrops(game, renderer);
+    initPaletteBlocks(game);
 
     game.volume = 100;
     game.showSpriteName = 1;
@@ -326,9 +324,9 @@ int main(int argc, char* argv[])
     while (running)
     {
         handleEvents(running, game, renderer);
-        update(game);
+        update(game, renderer);
 
-        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_SetRenderDrawColor(renderer, 240, 240, 240, 255);
         SDL_RenderClear(renderer);
 
         render(renderer, game);
@@ -341,6 +339,12 @@ int main(int argc, char* argv[])
     {
         if (sprite.texture)
             SDL_DestroyTexture(sprite.texture);
+    }
+
+    for (auto& b : game.backdrops)
+    {
+        if (b.texture)
+            SDL_DestroyTexture(b.texture);
     }
 
     if (g_font)
@@ -356,12 +360,12 @@ int main(int argc, char* argv[])
 
     Mix_CloseAudio();
 
-    log_info("Program ended");
-
     if (game.logoTexture)
     {
         SDL_DestroyTexture(game.logoTexture);
     }
+
+    log_info("Program ended");
 
     return 0;
 }

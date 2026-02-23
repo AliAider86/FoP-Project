@@ -21,12 +21,4 @@ add_executable(FoP main.cpp
         logger.cpp
         filedialog.h)
 
-target_link_libraries(${PROJECT_NAME}
-        -lmingw32
-        -lSDL2main
-        -lSDL2
-        -lSDL2_ttf
-        -lSDL2_image
-        -lSDL2_mixer
-        comdlg32
-)
+target_link_libraries(${PROJECT_NAME} -lmingw32 -lSDL2main -lSDL2 -lSDL2_image -lSDL2_ttf -lSDL2_mixer)
