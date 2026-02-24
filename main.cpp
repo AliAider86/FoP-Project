@@ -87,7 +87,6 @@ void renderText(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Colo
 void addDefaultSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath)
 {
     Sprite newSprite;
-
     newSprite.x = game.screenWidth / 2 - 25;
     newSprite.y = game.screenHeight / 2 - 25;
     newSprite.w = 50;
@@ -98,29 +97,28 @@ void addDefaultSprite(GameState& game, SDL_Renderer* renderer, const char* name,
     newSprite.message = "";
     newSprite.isThinking = false;
     newSprite.texture = nullptr;
-    newSprite.imagePath = imagePath ? imagePath : "";
     newSprite.index = game.sprites.size();
     newSprite.isActive = false;
+    newSprite.currentCostume = 0;
 
-    if (imagePath && renderer && strlen(imagePath) > 0)
-    {
-        bool loaded = loadSpriteTexture(&newSprite, renderer, imagePath);
-        if (!loaded)
-        {
-            log_warning(("Failed to load image: " + string(imagePath) + ", using rectangle").c_str());
-            newSprite.w = 50;
-            newSprite.h = 50;
-        }
+    // costume‌های پیش‌فرض
+    if (imagePath && strlen(imagePath) > 0) {
+        newSprite.costumes.push_back(imagePath);
+    } else {
+        newSprite.costumes.push_back("cat.png");
     }
-    else
+    newSprite.costumes.push_back("dog.png");
+    newSprite.costumes.push_back("bird.png");
+
+    newSprite.imagePath = newSprite.costumes[0];
+
+    if (renderer && !newSprite.imagePath.empty())
     {
-        log_warning(("No image path provided for sprite: " + string(name) + ", using rectangle").c_str());
-        newSprite.w = 50;
-        newSprite.h = 50;
+        loadSpriteTexture(&newSprite, renderer, newSprite.imagePath.c_str());
     }
 
     game.sprites.push_back(newSprite);
-    log_info(("Sprite added: " + string(name) + " - size: " + to_string(newSprite.w) + "x" + to_string(newSprite.h)).c_str());
+    log_info(("Sprite added: " + string(name) + " with " + to_string(newSprite.costumes.size()) + " costumes").c_str());
 }
 
 void initDefaultBackdrops(GameState& game, SDL_Renderer* renderer)
@@ -227,7 +225,7 @@ int main(int argc, char* argv[])
     }
     log_info("Renderer created");
 
-    g_font = TTF_OpenFont("arial.ttf", 18);
+    g_font = TTF_OpenFont("arial.ttf", 15);
     if (!g_font)
     {
         log_error("Failed to load font, trying arial.ttf");

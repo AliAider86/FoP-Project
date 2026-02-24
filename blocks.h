@@ -7,10 +7,21 @@
 
 using namespace std;
 
+enum CompareOp {
+    CMP_EQUAL,
+    CMP_NOT_EQUAL,
+    CMP_LESS,
+    CMP_LESS_OR_EQUAL,
+    CMP_GREATER,
+    CMP_GREATER_OR_EQUAL,
+};
+
 enum BlockType
 {
-    // حرکتی (آبی)
     MOVE_UP,
+    COSTUME_NUMBER,
+    BACKDROP_NUMBER,
+    SPRITE_SIZE,
     MOVE_DOWN,
     MOVE_LEFT,
     MOVE_RIGHT,
@@ -24,15 +35,22 @@ enum BlockType
     POINT_DIRECTION,
     GOTO_RANDOM,
     GOTO_MOUSE,
+    SET_COMPARISON,
 
-    // کنترلی (نارنجی)
     REPEAT,
     END_REPEAT,
     FOREVER,
     END_FOREVER,
     WAIT,
+    IF_THEN,
+    IF_THEN_ELSE,
+    ELSE,
+    END_IF,
+    WAIT_UNTIL,
+    REPEAT_UNTIL,
+    STOP_ALL,
+    STOP_THIS_SCRIPT,
 
-    // عملگرها (سبز)
     OP_ADD,
     OP_SUBTRACT,
     OP_MULTIPLY,
@@ -55,7 +73,6 @@ enum BlockType
     OP_MOD,
     OP_XOR,
 
-    // ظاهری (نیلی)
     SAY,
     SAY_FOR,
     THINK,
@@ -65,54 +82,81 @@ enum BlockType
     CHANGE_SIZE,
     SET_SIZE,
 
-    // متغیرها
     SET_VARIABLE,
     CHANGE_VARIABLE,
     SHOW_VARIABLE,
     HIDE_VARIABLE,
 
-    // رویدادها (زرد)
     WHEN_GREEN_FLAG,
     WHEN_KEY_PRESSED,
     WHEN_SPRITE_CLICKED,
+    WHEN_I_RECEIVE,
+    BROADCAST,
+    BROADCAST_AND_WAIT,
 
-    // صدا (بنفش)
     PLAY_SOUND,
     PLAY_SOUND_UNTIL_DONE,
     STOP_ALL_SOUNDS,
     CHANGE_VOLUME,
     SET_VOLUME,
 
-    // ===== بلوک‌های ترسیمی (Pen) - رنگ سبز پررنگ =====
     PEN_ERASE_ALL,
     PEN_STAMP,
     PEN_PEN_UP,
     PEN_PEN_DOWN,
-    PEN_SET_COLOR,          // تنظیم رنگ با انتخاب مستقیم
-    PEN_CHANGE_COLOR,       // تغییر رنگ با مقدار
-    PEN_SET_COLOR_PARAM,    // تنظیم یکی از پارامترهای رنگ (رنگ اصلی، روشنایی، اشباع)
-    PEN_CHANGE_COLOR_PARAM, // تغییر پارامتر رنگ
-    PEN_SET_SIZE,           // تنظیم ضخامت قلم
-    PEN_CHANGE_SIZE,        // تغییر ضخامت
+    PEN_SET_COLOR,
+    PEN_CHANGE_COLOR,
+    PEN_SET_COLOR_PARAM,
+    PEN_CHANGE_COLOR_PARAM,
+    PEN_SET_SIZE,
+    PEN_CHANGE_SIZE,
+
+    SENSOR_TOUCHING_EDGE,
+    SENSOR_TOUCHING_MOUSE,
+    SENSOR_TOUCHING_COLOR,
+    SENSOR_KEY_PRESSED,
+    SENSOR_MOUSE_DOWN,
+    SENSOR_MOUSE_X,
+    SENSOR_MOUSE_Y,
+    SENSOR_TIMER,
+    SENSOR_RESET_TIMER,
+    SENSOR_ASK_AND_WAIT,
+    SENSOR_ANSWER,
+    SENSOR_DISTANCE_TO_MOUSE,
+    SENSOR_DISTANCE_TO_SPRITE,
+    SET_VARIABLE_TO_SENSOR,
 };
 
 enum BlockCategory
 {
-    CAT_MOTION,      // 0
-    CAT_LOOKS,       // 1
-    CAT_SOUND,       // 2
-    CAT_EVENTS,      // 3
-    CAT_CONTROL,     // 4
-    CAT_SENSING,     // 5
-    CAT_OPERATORS,   // 6
-    CAT_VARIABLES,   // 7
-    CAT_PEN          // 8  (دسته‌بندی جدید برای Pen)
+    CAT_MOTION,
+    CAT_LOOKS,
+    CAT_SOUND,
+    CAT_EVENTS,
+    CAT_CONTROL,
+    CAT_SENSING = 5,
+    CAT_OPERATORS,
+    CAT_VARIABLES,
+    CAT_PEN
 };
 
-// برای تنظیم پارامترهای رنگ می‌توانیم از enum استفاده کنیم
+enum SensorType
+{
+    SENSOR_TYPE_TOUCHING_EDGE,
+    SENSOR_TYPE_TOUCHING_MOUSE,
+    SENSOR_TYPE_KEY_PRESSED,
+    SENSOR_TYPE_MOUSE_DOWN,
+    SENSOR_TYPE_MOUSE_X,
+    SENSOR_TYPE_MOUSE_Y,
+    SENSOR_TYPE_TIMER,
+    SENSOR_TYPE_ANSWER,
+    SENSOR_TYPE_DISTANCE_TO_MOUSE,
+    SENSOR_TYPE_DISTANCE_TO_SPRITE,
+};
+
 enum PenColorParam
 {
-    PEN_PARAM_COLOR,      // hue
+    PEN_PARAM_COLOR,
     PEN_PARAM_SATURATION,
     PEN_PARAM_BRIGHTNESS
 };
@@ -125,13 +169,20 @@ struct Block
     int repeatCount;
     string variableName;
     string eventName;
+    string messageName;
     int keyCode;
+    CompareOp compareOp;
+    string leftVar;
+    string rightVar;
+
+    int ifTrueJump;
+    int ifFalseJump;
+    int endIfIndex;
 
     bool editingMode;
     int editingField;
     string editingBuffer;
 
-    // فیلدهای Drag & Drop
     int x, y;
     int width, height;
     bool isDragging;
@@ -142,29 +193,36 @@ struct Block
     bool inCodeArea;
 
     int paletteId;
-
-    // فیلدهای اضافی برای Pen (مثلاً برای تعیین پارامتر رنگ)
     PenColorParam penParam;
+
+    SensorType sensorType;
+    string sensorParam;
+    Uint8 sensorColorR, sensorColorG, sensorColorB;
 
     Block() :
             type(MOVE_UP),
             category(CAT_MOTION),
             repeatCount(0),
             keyCode(0),
+            ifTrueJump(-1),
+            ifFalseJump(-1),
+            endIfIndex(-1),
             editingMode(false),
             editingField(-1),
             editingBuffer(""),
-            x(0),
-            y(0),
-            width(0),
-            height(0),
+            x(0), y(0), width(0), height(0),
             isDragging(false),
-            dragOffsetX(0),
-            dragOffsetY(0),
+            dragOffsetX(0), dragOffsetY(0),
             parent(nullptr),
             inCodeArea(false),
             paletteId(-1),
-            penParam(PEN_PARAM_COLOR)
+            penParam(PEN_PARAM_COLOR),
+            sensorType(SENSOR_TYPE_TOUCHING_EDGE),
+            sensorParam(""),
+            sensorColorR(0), sensorColorG(0), sensorColorB(0),
+            compareOp(CMP_EQUAL),          // <-- مقداردهی
+            leftVar(""),
+            rightVar("")
     {}
 
     Block(BlockType t, BlockCategory cat) :
@@ -172,6 +230,9 @@ struct Block
             category(cat),
             repeatCount(0),
             keyCode(0),
+            ifTrueJump(-1),
+            ifFalseJump(-1),
+            endIfIndex(-1),
             editingMode(false),
             editingField(-1),
             editingBuffer(""),
@@ -185,7 +246,10 @@ struct Block
             parent(nullptr),
             inCodeArea(false),
             paletteId(-1),
-            penParam(PEN_PARAM_COLOR)
+            penParam(PEN_PARAM_COLOR),
+            sensorType(SENSOR_TYPE_TOUCHING_EDGE),
+            sensorParam(""),
+            sensorColorR(0), sensorColorG(0), sensorColorB(0)
     {}
 };
 

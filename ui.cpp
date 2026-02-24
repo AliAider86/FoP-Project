@@ -56,6 +56,7 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
             game.pressedThisFrame[e.key.keysym.scancode] = 1;
 
             // ===== ویرایش با صفحه‌کلید =====
+            bool keepEditing = false;
             bool blockEditing = false;
 
             for (int i = 0; i < game.program.size(); i++)
@@ -69,8 +70,102 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                     {
                         if (!b.editingBuffer.empty())
                         {
-                            // ===== بلوک‌های SAY و THINK (دو پارامتری) =====
-                            if (b.type == SAY_FOR || b.type == THINK_FOR)
+                            if (b.type == SET_COMPARISON)
+                            {
+                                switch (b.editingField) {
+                                    case 0:
+                                    {
+                                        string op = b.editingBuffer;
+                                        if (op == "=") b.compareOp = CMP_EQUAL;
+                                        else if (op == "≠" || op == "!=") b.compareOp = CMP_NOT_EQUAL;
+                                        else if (op == "<") b.compareOp = CMP_LESS;
+                                        else if (op == "<=") b.compareOp = CMP_LESS_OR_EQUAL;
+                                        else if (op == ">") b.compareOp = CMP_GREATER;
+                                        else if (op == ">=") b.compareOp = CMP_GREATER_OR_EQUAL;
+                                        break;
+                                    }
+                                    case 1:
+                                        if (!b.editingBuffer.empty()) b.variableName = b.editingBuffer;
+                                        break;
+                                    case 2:
+                                        if (isalpha(b.editingBuffer[0])) {
+                                            b.leftVar = b.editingBuffer;
+                                        } else {
+                                            b.leftVar = "";
+                                            double val = stod(b.editingBuffer);
+                                            if (b.parameters.empty()) b.parameters.push_back(Value(val));
+                                            else b.parameters[0] = Value(val);
+                                        }
+                                        break;
+                                    case 3:
+                                        if (isalpha(b.editingBuffer[0])) {
+                                            b.rightVar = b.editingBuffer;
+                                        } else {
+                                            b.rightVar = "";
+                                            double val = stod(b.editingBuffer);
+                                            if (b.parameters.size() < 2) b.parameters.resize(2);
+                                            b.parameters[1] = Value(val);
+                                        }
+                                        break;
+                                }
+
+                                const char* opStr = "";
+                                switch (b.compareOp) {
+                                    case CMP_EQUAL: opStr = "="; break;
+                                    case CMP_NOT_EQUAL: opStr = "≠"; break;
+                                    case CMP_LESS: opStr = "<"; break;
+                                    case CMP_LESS_OR_EQUAL: opStr = "≤"; break;
+                                    case CMP_GREATER: opStr = ">"; break;
+                                    case CMP_GREATER_OR_EQUAL: opStr = "≥"; break;
+                                }
+                                string left = b.leftVar.empty() ? (b.parameters.empty() ? "0" : to_string((int)b.parameters[0].asNumber())) : b.leftVar;
+                                string right = b.rightVar.empty() ? (b.parameters.size() > 1 ? to_string((int)b.parameters[1].asNumber()) : "0") : b.rightVar;
+                                b.eventName = "set " + b.variableName + " to compare (" + left + " " + opStr + " " + right + ")";
+
+                                int nextField = b.editingField + 1;
+                                if (nextField <= 3) {
+                                    b.editingField = nextField;
+                                    switch (nextField) {
+                                        case 1: b.editingBuffer = b.variableName.empty() ? "result" : b.variableName; break;
+                                        case 2: b.editingBuffer = !b.leftVar.empty() ? b.leftVar : (b.parameters.empty() ? "0" : to_string((int)b.parameters[0].asNumber())); break;
+                                        case 3: b.editingBuffer = !b.rightVar.empty() ? b.rightVar : (b.parameters.size() > 1 ? to_string((int)b.parameters[1].asNumber()) : "0"); break;
+                                    }
+                                    keepEditing = true;
+                                }
+                            }
+
+                            // ===== بلوک‌های Events (ویرایش messageName) =====
+                            if (b.type == WHEN_I_RECEIVE || b.type == BROADCAST || b.type == BROADCAST_AND_WAIT)
+                            {
+                                string oldName = b.messageName;
+                                b.messageName = b.editingBuffer;
+
+                                // اگر بلوک از نوع WHEN_I_RECEIVE است، هندلرها را به‌روز کن
+                                if (b.type == WHEN_I_RECEIVE)
+                                {
+                                    // حذف از هندلر قدیم
+                                    if (game.messageHandlers.find(oldName) != game.messageHandlers.end())
+                                    {
+                                        auto& vec = game.messageHandlers[oldName];
+                                        vec.erase(remove(vec.begin(), vec.end(), i), vec.end());
+                                        if (vec.empty()) game.messageHandlers.erase(oldName);
+                                    }
+                                    // اضافه به هندلر جدید
+                                    game.messageHandlers[b.messageName].push_back(i);
+                                }
+
+                                // بازسازی eventName
+                                if (b.type == WHEN_I_RECEIVE)
+                                    b.eventName = "when I receive " + b.messageName;
+                                else if (b.type == BROADCAST)
+                                    b.eventName = "broadcast " + b.messageName;
+                                else if (b.type == BROADCAST_AND_WAIT)
+                                    b.eventName = "broadcast " + b.messageName + " and wait";
+
+                                log_info(("Message name changed to: " + b.messageName).c_str());
+                            }
+                                // ===== بلوک‌های SAY و THINK (دو پارامتری) =====
+                            else if (b.type == SAY_FOR || b.type == THINK_FOR)
                             {
                                 if (b.editingField == 0)
                                 {
@@ -105,6 +200,19 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                                 string y = to_string((int)b.parameters[1].asNumber());
                                 b.eventName = "go to x: " + x + " y: " + y;
                             }
+
+                            else if (b.type == COSTUME_NUMBER || b.type == SPRITE_SIZE || b.type == BACKDROP_NUMBER)
+                            {
+                                if (!b.editingBuffer.empty())
+                                    b.variableName = b.editingBuffer;
+                                // بازسازی eventName
+                                if (b.type == COSTUME_NUMBER)
+                                    b.eventName = "set " + b.variableName + " to costume number";
+                                else if (b.type == SPRITE_SIZE)
+                                    b.eventName = "set " + b.variableName + " to size";
+                                else if (b.type == BACKDROP_NUMBER)
+                                    b.eventName = "set " + b.variableName + " to backdrop number";
+                            }
                                 // ===== بلوک‌های حرکتی و کنترلی ساده =====
                             else if ((b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
                                       b.type == TURN_RIGHT || b.type == TURN_LEFT ||
@@ -137,6 +245,9 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                             {
                                 int newVal = stoi(b.editingBuffer);
                                 if (newVal < 1) newVal = 1;
+                                if (newVal > 500) {
+                                    newVal = 500; // محدودیت بالا
+                                }
                                 b.parameters[0] = Value((double)newVal);
                                 b.eventName = "set size to " + to_string(newVal) + " %";
                             }
@@ -187,10 +298,51 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                                         break;
                                 }
                             }
+                                // ===== بلوک‌های کنترلی جدید =====
+                            else if (b.type == REPEAT)
+                            {
+                                int newVal = stoi(b.editingBuffer);
+                                if (newVal < 0) newVal = 0;
+                                b.repeatCount = newVal;
+                                b.eventName = "repeat " + to_string(newVal);
+                            }
+                            else if (b.type == IF_THEN || b.type == IF_THEN_ELSE || b.type == WAIT_UNTIL || b.type == REPEAT_UNTIL)
+                            {
+                                // ذخیره شرط (به صورت بولی)
+                                bool cond = (b.editingBuffer == "true" || b.editingBuffer == "1");
+                                if (b.parameters.empty())
+                                    b.parameters.push_back(Value(cond));
+                                else
+                                    b.parameters[0] = Value(cond);
+
+                                // بازسازی eventName
+                                if (b.type == IF_THEN)
+                                    b.eventName = "if " + b.editingBuffer + " then";
+                                else if (b.type == IF_THEN_ELSE)
+                                    b.eventName = "if " + b.editingBuffer + " then else";
+                                else if (b.type == WAIT_UNTIL)
+                                    b.eventName = "wait until " + b.editingBuffer;
+                                else if (b.type == REPEAT_UNTIL)
+                                    b.eventName = "repeat until " + b.editingBuffer;
+                            }
+                            else if (b.type == STOP_ALL)
+                            {
+                                b.eventName = "stop all";
+                            }
+                            else if (b.type == STOP_THIS_SCRIPT)
+                            {
+                                b.eventName = "stop this script";
+                            }
                         }
                         b.editingMode = false;
                         b.editingField = -1;
                         b.editingBuffer = "";
+
+                        if (!keepEditing) {
+                            b.editingMode = false;
+                            b.editingField = -1;
+                            b.editingBuffer = "";
+                        }
                     }
                     else if (e.key.keysym.sym == SDLK_ESCAPE)
                     {
@@ -343,38 +495,74 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                     blockEditing = true;
                     Block& b = game.program[i];
 
-                    // تشخیص فیلد متنی
-                    bool isTextField = (b.type == SAY || b.type == THINK ||
-                                        ((b.type == SAY_FOR || b.type == THINK_FOR) && b.editingField == 0));
+                    if (b.type == SET_COMPARISON)
+                    {
+                        b.editingBuffer += e.text.text;
+                        break;
+                    }
 
-                    if (isTextField)
+                    else if (b.type == COSTUME_NUMBER || b.type == SPRITE_SIZE || b.type == BACKDROP_NUMBER)
                     {
                         b.editingBuffer += e.text.text;
                     }
-                    else
+
+                    // تشخیص نوع بلوک برای ویرایش
+                    if (b.type == WHEN_I_RECEIVE || b.type == BROADCAST || b.type == BROADCAST_AND_WAIT)
                     {
-                        // برای فیلدهای عددی (شامل X و Y)
+                        // ویرایش messageName (فیلد متنی)
+                        b.editingBuffer += e.text.text;
+                    }
+                    else if (b.type == REPEAT || b.type == IF_THEN || b.type == IF_THEN_ELSE || b.type == WAIT_UNTIL || b.type == REPEAT_UNTIL)
+                    {
+                        // این بلوک‌ها عددی/بولی هستند
                         for (char c : string(e.text.text))
                         {
                             if (c >= '0' && c <= '9')
                                 b.editingBuffer += c;
-                            else if (c == '.' && b.editingBuffer.find('.') == string::npos)
-                                b.editingBuffer += '.';
                             else if (c == '-' && b.editingBuffer.empty())
                                 b.editingBuffer += '-';
+                                // اجازه ورود حروف برای true/false هم می‌دهیم
+                            else if (b.type != REPEAT && (c == 't' || c == 'r' || c == 'u' || c == 'e' || c == 'f' || c == 'a' || c == 'l' || c == 's'))
+                                b.editingBuffer += c;
+                        }
+                    }
+                    else
+                    {
+                        // تشخیص فیلد متنی برای SAY و THINK
+                        bool isTextField = (b.type == SAY || b.type == THINK ||
+                                            ((b.type == SAY_FOR || b.type == THINK_FOR) && b.editingField == 0));
+
+                        if (isTextField)
+                        {
+                            // فیلد متنی: هر کاراکتری مجاز
+                            b.editingBuffer += e.text.text;
+                        }
+                        else
+                        {
+                            // فیلد عددی: فقط اعداد، نقطه و منفی
+                            for (char c : string(e.text.text))
+                            {
+                                if (c >= '0' && c <= '9')
+                                    b.editingBuffer += c;
+                                else if (c == '.' && b.editingBuffer.find('.') == string::npos)
+                                    b.editingBuffer += '.';
+                                else if (c == '-' && b.editingBuffer.empty())
+                                    b.editingBuffer += '-';
+                            }
                         }
                     }
                     break;
                 }
             }
 
+            // اگر هیچ بلوکی در حال ویرایش نیست، شاید در حال ویرایش مشخصات اسپرایت باشیم
             if (!blockEditing && game.editingMode)
             {
-                if (game.editingField == 0) // اسم اسپرایت
+                if (game.editingField == 0) // اسم اسپرایت (فیلد متنی)
                 {
                     game.editingBuffer += e.text.text;
                 }
-                else // سایر فیلدهای عددی
+                else // سایر فیلدهای عددی (x, y, size, direction, volume)
                 {
                     for (char c : string(e.text.text))
                     {
@@ -518,9 +706,16 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                         newBlock.inCodeArea = false;
                         newBlock.x = mx - game.dragBlockOffsetX;
                         newBlock.y = my - game.dragBlockOffsetY;
-                        // مهم: همه خصوصیات رو کپی کن
                         game.program.push_back(newBlock);
                         game.draggedBlock = &game.program.back();
+
+                        // ثبت هندلر برای بلوک WHEN_I_RECEIVE جدید
+                        if (newBlock.type == WHEN_I_RECEIVE && !newBlock.messageName.empty())
+                        {
+                            game.messageHandlers[newBlock.messageName].push_back(game.program.size() - 1);
+                            log_info(("Message handler registered for new block: " + newBlock.messageName).c_str());
+                        }
+
                         log_info(("Block dragged from palette: " + newBlock.eventName + " (category: " + to_string(newBlock.category) + ")").c_str());
                     }
                     else
@@ -539,6 +734,7 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                 // ===== راست کلیک برای ویرایش بلوک =====
             else if (e.button.button == SDL_BUTTON_RIGHT)
             {
+                // پیدا کردن بلوکی که روی آن کلیک راست شده
                 for (int i = game.program.size() - 1; i >= 0; i--)
                 {
                     Block& block = game.program[i];
@@ -546,30 +742,92 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                         mx >= block.x && mx <= block.x + block.width &&
                         my >= block.y && my <= block.y + block.height)
                     {
-                        if (!block.parameters.empty())
+                        // فعال کردن حالت ویرایش
+                        block.editingMode = true;
+
+                        // تشخیص نوع بلوک برای ویرایش
+                        if (block.type == WHEN_I_RECEIVE || block.type == BROADCAST || block.type == BROADCAST_AND_WAIT)
+                        {
+                            // ویرایش messageName
+                            block.editingField = 0;
+                            block.editingBuffer = block.messageName;
+                            log_info(("Editing message name: " + block.messageName).c_str());
+                        }
+                        else if (block.type == REPEAT)
+                        {
+                            // ویرایش تعداد تکرار
+                            block.editingField = 0;
+                            block.editingBuffer = to_string(block.repeatCount);
+                            log_info(("Editing repeat count: " + block.editingBuffer).c_str());
+                        }
+                        else if (block.type == IF_THEN || block.type == IF_THEN_ELSE || block.type == WAIT_UNTIL || block.type == REPEAT_UNTIL)
+                        {
+                            // ویرایش شرط (پارامتر اول)
+                            block.editingField = 0;
+                            if (!block.parameters.empty())
+                                block.editingBuffer = block.parameters[0].asString();
+                            else
+                                block.editingBuffer = "true";
+                            log_info(("Editing condition: " + block.editingBuffer).c_str());
+                        }
+                        else if (block.type == COSTUME_NUMBER || block.type == SPRITE_SIZE || block.type == BACKDROP_NUMBER)
                         {
                             block.editingMode = true;
-
-                            // تشخیص اینکه کدام پارامتر کلیک شده (X یا Y)
-                            if (block.type == GOTO_XY && block.parameters.size() >= 2)
+                            block.editingField = 0;
+                            block.editingBuffer = block.variableName.empty() ? "myVar" : block.variableName;
+                            log_info(("Editing variable name for looks reporter: " + block.editingBuffer).c_str());
+                        }
+                        else if (!block.parameters.empty())
+                        {
+                            // ویرایش پارامترهای عددی/متنی (بقیه بلوک‌ها)
+                            block.editingField = 0;
+                            if (block.type == SAY || block.type == THINK ||
+                                block.type == SAY_FOR || block.type == THINK_FOR)
                             {
-                                // مختصات X و Y در بلوک
-                                int xPos = block.x + 70;  // موقعیت تقریبی X
-                                int yPos = block.y + 10;
-
-                                if (mx >= xPos && mx <= xPos + 50)
-                                    block.editingField = 0;  // ویرایش X
-                                else
-                                    block.editingField = 1;  // ویرایش Y
-
-                                block.editingBuffer = to_string((int)block.parameters[block.editingField].asNumber());
+                                block.editingBuffer = block.parameters[0].asString();
                             }
                             else
                             {
-                                block.editingField = 0;
                                 block.editingBuffer = to_string((int)block.parameters[0].asNumber());
                             }
                             log_info(("Editing block: " + block.eventName).c_str());
+                        }
+                        else if (block.type == SET_COMPARISON)
+                        {
+                            // تقسیم بلوک به ۴ قسمت مساوی
+                            int partWidth = block.width / 4;
+                            int partIndex = (mx - block.x) / partWidth;
+                            if (partIndex < 0) partIndex = 0;
+                            if (partIndex > 3) partIndex = 3;
+                            block.editingField = partIndex;
+
+                            switch (partIndex) {
+                                case 0: // عملگر
+                                {
+                                    const char* opNames[] = {"=", "≠", "<", "≤", ">", "≥"};
+                                    block.editingBuffer = opNames[block.compareOp];
+                                    break;
+                                }
+                                case 1: // متغیر خروجی
+                                    block.editingBuffer = block.variableName.empty() ? "result" : block.variableName;
+                                    break;
+                                case 2: // سمت چپ
+                                    if (!block.leftVar.empty())
+                                        block.editingBuffer = block.leftVar;
+                                    else if (!block.parameters.empty())
+                                        block.editingBuffer = to_string((int)block.parameters[0].asNumber());
+                                    else
+                                        block.editingBuffer = "0";
+                                    break;
+                                case 3: // سمت راست
+                                    if (!block.rightVar.empty())
+                                        block.editingBuffer = block.rightVar;
+                                    else if (block.parameters.size() > 1)
+                                        block.editingBuffer = to_string((int)block.parameters[1].asNumber());
+                                    else
+                                        block.editingBuffer = "0";
+                                    break;
+                            }
                         }
                         break;
                     }
@@ -675,6 +933,62 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                 }
             }
 
+            // ===== تشخیص کلیک روی دکمه‌های تغییر costume =====
+            // ===== تشخیص کلیک روی دکمه‌های تغییر costume =====
+            if (active && active->costumes.size() > 0)
+            {
+                int btnSize = 30;
+                int spacing = 10;
+                int totalWidth = (btnSize * 2) + spacing + 40;
+
+                int costumeBtnX = spritePanel.x + stageWidth - totalWidth - 10;
+                int costumeBtnY = spritePanel.y + 25;
+
+                // دکمه قبلی
+                SDL_Rect prevCostumeRect = {costumeBtnX, costumeBtnY, btnSize, btnSize};
+                if (mx >= prevCostumeRect.x && mx <= prevCostumeRect.x + prevCostumeRect.w &&
+                    my >= prevCostumeRect.y && my <= prevCostumeRect.y + prevCostumeRect.h)
+                {
+                    int newCostume = active->currentCostume - 1;
+                    if (newCostume < 0) newCostume = active->costumes.size() - 1;
+
+                    active->currentCostume = newCostume;
+                    active->imagePath = active->costumes[newCostume];
+
+                    if (active->texture)
+                    {
+                        SDL_DestroyTexture(active->texture);
+                        active->texture = nullptr;
+                    }
+                    if (!active->imagePath.empty())
+                    {
+                        loadSpriteTexture(active, renderer, active->imagePath.c_str());
+                    }
+                    log_info(("Costume changed to: " + active->imagePath).c_str());
+                }
+
+                // دکمه بعدی
+                SDL_Rect nextCostumeRect = {prevCostumeRect.x + btnSize + 40, costumeBtnY, btnSize, btnSize};
+                if (mx >= nextCostumeRect.x && mx <= nextCostumeRect.x + nextCostumeRect.w &&
+                    my >= nextCostumeRect.y && my <= nextCostumeRect.y + nextCostumeRect.h)
+                {
+                    int newCostume = (active->currentCostume + 1) % active->costumes.size();
+                    active->currentCostume = newCostume;
+                    active->imagePath = active->costumes[newCostume];
+
+                    if (active->texture)
+                    {
+                        SDL_DestroyTexture(active->texture);
+                        active->texture = nullptr;
+                    }
+                    if (!active->imagePath.empty())
+                    {
+                        loadSpriteTexture(active, renderer, active->imagePath.c_str());
+                    }
+                    log_info(("Costume changed to: " + active->imagePath).c_str());
+                }
+            }
+
             // ===== تشخیص کلیک روی اسپرایت‌ها برای Drag =====
             game.clickedSpriteIndex = -1;
             for (int i = game.sprites.size() - 1; i >= 0; i--)
@@ -727,6 +1041,7 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
             game.sensingCategoryBtn.isPressed = false;
             game.operatorsCategoryBtn.isPressed = false;
             game.variablesCategoryBtn.isPressed = false;
+            game.penCategoryBtn.isPressed = false;
 
             // ===== دکمه‌های پایین صفحه =====
             int buttonY = game.screenHeight - 80;
@@ -740,15 +1055,23 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                 my >= game.runButton.y && my <= game.runButton.y + game.runButton.h)
             {
                 game.runButton.isPressed = true;
-                game.isRunningCode = true;
-                game.greenFlagPressed = true;
-                game.currentBlockIndex = 0;
-                game.isExecutingBlock = false;
-                game.remainingMove = 0;
-                game.isWaiting = false;
-                game.isShowingMessage = false;
-                game.repeatCountStack.clear();
-                game.repeatStartStack.clear();
+
+                if (game.isPaused) {
+                    // ادامه از جایی که متوقف شده
+                    game.isPaused = false;
+                    game.isRunningCode = true;
+                } else {
+                    // شروع جدید
+                    game.isRunningCode = true;
+                    game.greenFlagPressed = true;
+                    game.currentBlockIndex = 0;
+                    game.isExecutingBlock = false;
+                    game.remainingMove = 0;
+                    game.isWaiting = false;
+                    game.isShowingMessage = false;
+                    game.repeatCountStack.clear();
+                    game.repeatStartStack.clear();
+                }
                 log_info("Run button clicked");
             }
 
@@ -757,15 +1080,25 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                 my >= game.pauseButton.y && my <= game.pauseButton.y + game.pauseButton.h)
             {
                 game.pauseButton.isPressed = true;
-                game.isRunningCode = false;
+                if (game.isRunningCode) {
+                    game.isPaused = true;
+                    game.isRunningCode = false;
+                }
                 log_info("Pause button clicked");
             }
 
-            // ===== دکمه Step =====
+// ===== دکمه Step =====
+// ===== دکمه Step =====
             if (mx >= game.stepButton.x && mx <= game.stepButton.x + game.stepButton.w &&
                 my >= game.stepButton.y && my <= game.stepButton.y + game.stepButton.h)
             {
                 game.stepButton.isPressed = true;
+
+                // اگر هیچ اسکریپتی فعال نیست، باید برنامه را راه‌اندازی کنیم
+                if (game.scriptStartIndices.empty()) {
+                    game.greenFlagPressed = true;
+                }
+
                 game.stepMode = true;
                 game.isRunningCode = true;
                 log_info("Step button clicked");
@@ -776,21 +1109,55 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                 my >= game.resetButton.y && my <= game.resetButton.y + game.resetButton.h)
             {
                 game.resetButton.isPressed = true;
+
+                // توقف اجرا
                 game.isRunningCode = false;
+                game.isPaused = false;
+                game.stepMode = false;
+
+                // ریست وضعیت اجرای بلوک‌ها
                 game.currentBlockIndex = 0;
                 game.isExecutingBlock = false;
                 game.remainingMove = 0;
                 game.isWaiting = false;
                 game.isShowingMessage = false;
+
+                // پاک کردن پشته‌ها
                 game.repeatCountStack.clear();
                 game.repeatStartStack.clear();
 
+                // پاک کردن پشته شرط‌ها
+                while (!game.ifStack.empty()) game.ifStack.pop();
+
+                // پاک کردن اسکریپت‌های فعال
+                game.scriptStartIndices.clear();
+                game.scriptActive.clear();
+                game.scriptCurrentBlock.clear();
+
+                // پاک کردن متغیرها (مهم)
+                game.variables.clear();
+
+                // پاک کردن صف پیام‌ها
+                while (!game.messageQueue.empty()) game.messageQueue.pop();
+
+                // ریست وضعیت broadcast
+                game.waitingForBroadcast = false;
+                game.waitingScriptIndex = -1;
+
+                // ریست وضعیت حسگرها
+                game.waitingForAnswer = false;
+                game.answer = "";
+                game.currentQuestion = "";
+
+                // ریست موقعیت اسپرایت‌ها
                 for (auto& sprite : game.sprites)
                 {
                     sprite.x = game.screenWidth / 2 - sprite.w / 2;
                     sprite.y = game.screenHeight / 2 - sprite.h / 2;
-                    sprite.isThinking = false;
+                    sprite.direction = 0;
                     sprite.message = "";
+                    sprite.isThinking = false;
+                    sprite.visible = true;
                 }
 
                 log_info("Reset button clicked");
@@ -839,6 +1206,21 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                     log_info("Load cancelled by user");
                 }
             }
+
+            // ===== دکمه Toggle Variables =====
+            if (mx >= game.loadButton.x + game.loadButton.w + 20 &&
+                mx <= game.loadButton.x + game.loadButton.w + 20 + 60 &&
+                my >= game.screenHeight - 80 &&
+                my <= game.screenHeight - 80 + 40)
+            {
+                game.showVariables = !game.showVariables;
+                log_info(("Toggle variables: " + string(game.showVariables ? "ON" : "OFF")).c_str());
+            }
+
+            int toggleBtnX = game.loadButton.x + game.loadButton.w + 20;
+            int toggleBtnY = game.screenHeight - 80;
+            int toggleBtnW = 60;
+            int toggleBtnH = 40;
 
             // ===== دکمه Previous Backdrop =====
             if (mx >= game.prevBackdropBtn.x && mx <= game.prevBackdropBtn.x + game.prevBackdropBtn.w &&
@@ -1034,6 +1416,24 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
 
                     if (inTrash)
                     {
+                        // قبل از حذف، اگر بلوک از نوع WHEN_I_RECEIVE است، آن را از هندلرها حذف کن
+                        if (game.draggedBlock->type == WHEN_I_RECEIVE && !game.draggedBlock->messageName.empty())
+                        {
+                            // پیدا کردن ایندکس بلوک در program
+                            for (size_t idx = 0; idx < game.program.size(); ++idx)
+                            {
+                                if (&game.program[idx] == game.draggedBlock)
+                                {
+                                    string msgName = game.draggedBlock->messageName;
+                                    auto& vec = game.messageHandlers[msgName];
+                                    vec.erase(remove(vec.begin(), vec.end(), idx), vec.end());
+                                    if (vec.empty()) {
+                                        game.messageHandlers.erase(msgName);
+                                    }
+                                    break;
+                                }
+                            }
+                        }
                         // حذف بلوک
                         for (auto it = game.program.begin(); it != game.program.end(); ++it)
                         {
@@ -1229,6 +1629,7 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
 }
 
 
+
 // ==================== تابع رندر ====================
 void render(SDL_Renderer* renderer, GameState& game)
 {
@@ -1389,36 +1790,29 @@ void render(SDL_Renderer* renderer, GameState& game)
     renderText(renderer, "Code Area", codeArea.x + 10, codeArea.y + 5, black);
 
     // رسم بلوک‌های برنامه (مشابه پالت با همان رنگ‌ها)
-    for (auto& block : game.program)
+    // رسم بلوک‌های برنامه
+    for (size_t i = 0; i < game.program.size(); i++)
     {
+        Block& block = game.program[i];
         if (&block != game.draggedBlock || !game.isDraggingBlock)
         {
             if (block.width > 0 && block.height > 0)
             {
                 SDL_Rect blockRect = {block.x, block.y, block.width, block.height};
 
+                // رنگ‌بندی براساس کتگوری
                 switch(block.category)
                 {
-                    case CAT_MOTION:
-                        SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255); break;
-                    case CAT_LOOKS:
-                        SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255); break;
-                    case CAT_SOUND:
-                        SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255); break;
-                    case CAT_EVENTS:
-                        SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255); break;
-                    case CAT_CONTROL:
-                        SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255); break;
-                    case CAT_SENSING:
-                        SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255); break;
-                    case CAT_OPERATORS:
-                        SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255); break;
-                    case CAT_VARIABLES:
-                        SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255); break;
-                    case CAT_PEN:
-                        SDL_SetRenderDrawColor(renderer, 0, 200, 0, 255); break;
-                    default:
-                        SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+                    case CAT_MOTION: SDL_SetRenderDrawColor(renderer, 70, 120, 255, 255); break;
+                    case CAT_LOOKS: SDL_SetRenderDrawColor(renderer, 100, 150, 255, 255); break;
+                    case CAT_SOUND: SDL_SetRenderDrawColor(renderer, 200, 50, 200, 255); break;
+                    case CAT_EVENTS: SDL_SetRenderDrawColor(renderer, 255, 200, 50, 255); break;
+                    case CAT_CONTROL: SDL_SetRenderDrawColor(renderer, 255, 140, 0, 255); break;
+                    case CAT_SENSING: SDL_SetRenderDrawColor(renderer, 0, 200, 200, 255); break;
+                    case CAT_OPERATORS: SDL_SetRenderDrawColor(renderer, 70, 200, 70, 255); break;
+                    case CAT_VARIABLES: SDL_SetRenderDrawColor(renderer, 255, 100, 50, 255); break;
+                    case CAT_PEN: SDL_SetRenderDrawColor(renderer, 0, 200, 0, 255); break;
+                    default: SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
                 }
 
                 SDL_RenderFillRect(renderer, &blockRect);
@@ -1436,6 +1830,16 @@ void render(SDL_Renderer* renderer, GameState& game)
                 else
                 {
                     renderText(renderer, block.eventName.c_str(), block.x + 5, block.y + 10, black);
+                }
+
+                // ===== اینجا: حاشیه برای بلوک در حال اجرا =====
+                if (i == game.lastExecutedBlock && game.isRunningCode)
+                {
+                    SDL_SetRenderDrawColor(renderer, 255, 255, 0, 255);
+                    SDL_Rect execRect = {block.x - 3, block.y - 3, block.width + 6, block.height + 6};
+                    SDL_RenderDrawRect(renderer, &execRect);
+                    // یه بار دیگه بکش تا پررنگ‌تر بشه
+                    SDL_RenderDrawRect(renderer, &execRect);
                 }
 
                 if (game.hoverBlock == &block)
@@ -1704,6 +2108,38 @@ void render(SDL_Renderer* renderer, GameState& game)
             SDL_RenderDrawRect(renderer, &currentSprite);
         }
 
+        // بعد از رسم مشخصات اسپرایت (حدود خط ۱۶۰۰)
+        if (active && active->costumes.size() > 0)
+        {
+            int btnSize = 30;
+            int spacing = 10;
+            int totalWidth = (btnSize * 2) + spacing + 40; // 40 برای نمایش شماره
+
+            int costumeBtnX = spritePanel.x + stageWidth - totalWidth - 10; // 10 فاصله از لبه راست
+            int costumeBtnY = spritePanel.y + 25; // هم‌ردیف با اسم
+
+            // دکمه قبلی
+            SDL_Rect prevCostumeRect = {costumeBtnX, costumeBtnY, btnSize, btnSize};
+            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+            SDL_RenderFillRect(renderer, &prevCostumeRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &prevCostumeRect);
+            renderText(renderer, "<", prevCostumeRect.x + 10, prevCostumeRect.y + 8, black);
+
+            // نمایش شماره costume
+            char costumeStr[20];
+            sprintf(costumeStr, "%d/%d", active->currentCostume + 1, (int)active->costumes.size());
+            renderText(renderer, costumeStr, prevCostumeRect.x + btnSize + 5, prevCostumeRect.y + 8, black);
+
+            // دکمه بعدی
+            SDL_Rect nextCostumeRect = {prevCostumeRect.x + btnSize + 40, costumeBtnY, btnSize, btnSize};
+            SDL_SetRenderDrawColor(renderer, 150, 150, 150, 255);
+            SDL_RenderFillRect(renderer, &nextCostumeRect);
+            SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+            SDL_RenderDrawRect(renderer, &nextCostumeRect);
+            renderText(renderer, ">", nextCostumeRect.x + 10, nextCostumeRect.y + 8, black);
+        }
+
         int textX = spritePanel.x + 70;
         int textY = spritePanel.y + 25;
         int lineHeight = 20;
@@ -1864,6 +2300,9 @@ void render(SDL_Renderer* renderer, GameState& game)
     SDL_RenderDrawRect(renderer, &loadRect);
     renderText(renderer, "Load", loadRect.x+30, loadRect.y+12, white);
 
+
+
+
     // دکمه‌های مدیریت اسپرایت
     int spriteBtnStartX = game.screenWidth - 350;
 
@@ -1937,7 +2376,7 @@ void render(SDL_Renderer* renderer, GameState& game)
     renderText(renderer, ">", nextBgRect.x+10, nextBgRect.y+12, white);
 
     SDL_Rect uploadRect = {game.uploadBackdropBtn.x, game.uploadBackdropBtn.y,
-                           game.uploadBackdropBtn.w+70, game.uploadBackdropBtn.h};
+                           game.uploadBackdropBtn.w+40, game.uploadBackdropBtn.h};
     if (game.uploadBackdropBtn.isPressed)
         SDL_SetRenderDrawColor(renderer, 0, 100, 200, 255);
     else
@@ -1955,4 +2394,57 @@ void render(SDL_Renderer* renderer, GameState& game)
         int nameY = uploadRect.y + 12;
         renderText(renderer, backdropName.c_str(), nameX, nameY, black);
     }
+
+    // ===== نمایش متغیرها در زمان اجرا =====
+    if (game.showVariables && game.variables.size() > 0)
+    {
+        int varPanelX = game.screenWidth - 220;
+        int varPanelY = 70;
+        int varPanelW = 200;
+        int varPanelH = 150;
+
+        SDL_Rect varPanel = {varPanelX, varPanelY, varPanelW, varPanelH};
+        SDL_SetRenderDrawColor(renderer, 240, 240, 240, 200);
+        SDL_RenderFillRect(renderer, &varPanel);
+        SDL_SetRenderDrawColor(renderer, 100, 100, 100, 255);
+        SDL_RenderDrawRect(renderer, &varPanel);
+
+        renderText(renderer, "Variables", varPanelX + 10, varPanelY + 5, black);
+
+        int yOffset = 25;
+        for (const auto& var : game.variables)
+        {
+            if (yOffset > varPanelH - 20) break;
+
+            string display;
+            if (var.second.type == VALUE_NUMBER)
+            {
+                double val = var.second.asNumber();
+                // اگر عدد صحیح است
+                if (val == (int)val)
+                    display = var.first + " = " + to_string((int)val);
+                else
+                    display = var.first + " = " + to_string(val);
+            }
+            else
+            {
+                display = var.first + " = " + var.second.asString();
+            }
+            renderText(renderer, display.c_str(), varPanelX + 10, varPanelY + yOffset, black);
+            yOffset += 20;
+        }
+    }
+
+    // ===== دکمه Toggle Variables =====
+    int toggleX = game.loadButton.x + game.loadButton.w + 20;
+    int toggleY = game.screenHeight - 80;
+    SDL_Rect toggleRect = {toggleX, toggleY, 60, 40};
+
+    if (game.showVariables)
+        boxRGBA(renderer, toggleX, toggleY, toggleX + 60, toggleY + 40, 100, 200, 100, 255); // سبز
+    else
+        boxRGBA(renderer, toggleX, toggleY, toggleX + 60, toggleY + 40, 200, 100, 100, 255); // قرمز
+
+    rectangleRGBA(renderer, toggleX, toggleY, toggleX + 60, toggleY + 40, 255, 255, 255, 255);
+    renderText(renderer, "Vars", toggleX + 15, toggleY + 12, white);
 }

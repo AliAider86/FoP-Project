@@ -15,11 +15,12 @@ string showSaveFileDialog()
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = NULL;
-    ofn.lpstrFilter = "Project Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+    // تغییر فیلتر به All Files (*.*)
+    ofn.lpstrFilter = "All Files (*.*)\0*.*\0";
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = MAX_PATH;
     ofn.lpstrTitle = "Save Project";
-    ofn.lpstrDefExt = "txt";
+    ofn.lpstrDefExt = "";  // پسوند پیش‌فرض رو خالی بذار
     ofn.Flags = OFN_OVERWRITEPROMPT | OFN_HIDEREADONLY;
 
     if (GetSaveFileNameA(&ofn))
@@ -37,7 +38,8 @@ string showOpenFileDialog()
     ZeroMemory(&ofn, sizeof(ofn));
     ofn.lStructSize = sizeof(ofn);
     ofn.hwndOwner = NULL;
-    ofn.lpstrFilter = "Project Files (*.txt)\0*.txt\0All Files (*.*)\0*.*\0";
+    // تغییر فیلتر به All Files (*.*)
+    ofn.lpstrFilter = "All Files (*.*)\0*.*\0";
     ofn.lpstrFile = fileName;
     ofn.nMaxFile = MAX_PATH;
     ofn.lpstrTitle = "Load Project";

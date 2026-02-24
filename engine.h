@@ -4,6 +4,8 @@
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <queue>
+#include <stack>
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_mixer.h>
 #include <string.h>
@@ -12,12 +14,25 @@
 
 using namespace std;
 
-// ساختار برای ذخیره یک نقطه از خط رسم شده
 struct PenPoint
 {
     int x, y;
     Uint8 r, g, b, a;
     int size;
+};
+
+struct QueuedMessage
+{
+    string messageName;
+    int senderScriptIndex;
+    Uint32 broadcastTime;
+};
+
+struct IfStackFrame
+{
+    int scriptIndex;
+    int endIfIndex;
+    bool inElseBranch;
 };
 
 struct Backdrop
@@ -36,62 +51,60 @@ struct Button
 
 struct Sprite
 {
+    // فیلدهای قبلی
     double x, y;
     int w, h;
     bool visible;
     double direction;
-
     string message;
     string name;
     bool isThinking;
-
     SDL_Texture* texture;
     string imagePath;
     int index;
     bool isActive;
+
+    // فیلدهای جدید برای costume
+    vector<string> costumes;    // لیست مسیر فایل‌های costume
+    int currentCostume;
+
+    Sprite() :
+            x(0), y(0), w(50), h(50), visible(true), direction(0),
+            message(""), name(""), isThinking(false), texture(nullptr),
+            imagePath(""), index(0), isActive(false),
+            currentCostume(0)  // مقداردهی اولیه
+    {}
 };
 
 struct GameState
 {
-    // اسپرایت‌ها
     vector<Sprite> sprites;
     int activeSpriteIndex;
-
-    // بلوک‌ها
     vector<Block> program;
     vector<Block> paletteBlocks;
     int currentBlockIndex;
-
-    // وضعیت اجرا
     bool isRunningCode;
     bool stepMode;
     double remainingMove;
     bool isExecutingBlock;
-
-    // ابعاد صفحه
     int screenWidth;
     int screenHeight;
 
-    // دکمه‌های اصلی
     Button runButton;
     Button pauseButton;
     Button stepButton;
     Button resetButton;
     Button saveButton;
     Button loadButton;
-
-    // دکمه‌های مدیریت اسپرایت
     Button addSpriteBtn;
     Button deleteSpriteBtn;
     Button prevSpriteBtn;
     Button nextSpriteBtn;
-
-    // دکمه‌های پس‌زمینه
     Button uploadBackdropBtn;
     Button prevBackdropBtn;
     Button nextBackdropBtn;
+    bool isPaused;
 
-    // دکمه‌های دسته‌بندی
     Button moveCategoryBtn;
     Button looksCategoryBtn;
     Button soundCategoryBtn;
@@ -100,27 +113,22 @@ struct GameState
     Button sensingCategoryBtn;
     Button operatorsCategoryBtn;
     Button variablesCategoryBtn;
-    Button penCategoryBtn;  // دکمه جدید برای Pen
-
+    Button penCategoryBtn;
     int currentCategory;
 
-    // پشته‌ها برای حلقه‌ها
     vector<int> repeatCountStack;
     vector<int> repeatStartStack;
+    stack<IfStackFrame> ifStack;
+    bool conditionResult;
 
-    // زمان‌بندی
     Uint32 waitStartTime;
     Uint32 waitDuration;
     bool isWaiting;
-
     Uint32 messageStartTime;
     Uint32 messageDuration;
     bool isShowingMessage;
 
-    // متغیرها
     unordered_map<string, Value> variables;
-
-    // رویدادها
     bool greenFlagPressed;
     Uint8 pressedKeys[SDL_NUM_SCANCODES];
     Uint8 pressedThisFrame[SDL_NUM_SCANCODES];
@@ -128,48 +136,43 @@ struct GameState
     int mouseX, mouseY;
     bool mousePressed;
 
-    // اسکریپت‌ها
     vector<int> scriptStartIndices;
     vector<bool> scriptActive;
     vector<int> scriptCurrentBlock;
 
-    // حسگرها
+    queue<QueuedMessage> messageQueue;
+    unordered_map<string, vector<int>> messageHandlers;
+    bool waitingForBroadcast;
+    int waitingScriptIndex;
+    Uint32 broadcastWaitStartTime;
+
     string askQuestion;
     string answer;
     bool waitingForAnswer;
     Uint32 timerStartTime;
     bool dragMode;
 
-    // بلوک انتخاب شده
     Block selectedBlock;
     bool placingBlock;
-
-    // ویرایش
     bool editingMode;
     int editingField;
     string editingBuffer;
     bool showSpriteName;
+    bool showVariables;  // در کنار showSpriteName
 
-    // صدا
     int volume;
     bool isPlayingSound;
     Mix_Chunk* soundEffect;
     int soundChannel;
 
-    // درگ اسپرایت
     bool isDragging;
     int dragOffsetX;
     int dragOffsetY;
     int clickedSpriteIndex;
-
-    // لوگو
     SDL_Texture* logoTexture;
-
-    // پس‌زمینه‌ها
     vector<Backdrop> backdrops;
     int currentBackdrop;
 
-    // ===== فیلدهای جدید برای Drag & Drop بلوک =====
     Block* draggedBlock;
     bool isDraggingBlock;
     int dragBlockStartX, dragBlockStartY;
@@ -177,33 +180,33 @@ struct GameState
     Block* hoverBlock;
     int codeAreaX, codeAreaY;
     int codeAreaWidth, codeAreaHeight;
-
-    // ===== فیلدهای جدید برای تشخیص کلیک روی پنل‌ها =====
     int categoriesPanelX, categoriesPanelY;
     int categoriesPanelWidth, categoriesPanelHeight;
     int examplesPanelX, examplesPanelY;
     int examplesPanelWidth, examplesPanelHeight;
-
-    // ===== فیلدهای جدید برای بازگردانی بلوک در صورت رها شدن خارج از Code Area =====
     Block* draggedBlockOriginalParent;
     int draggedBlockOriginalIndex;
-
-    // ===== فیلدهای جدید برای منطقه حذف (Trash) =====
     int trashX, trashY, trashW, trashH;
 
-    // ===== فیلدهای مربوط به Pen =====
-    bool penDown;                 // آیا قلم پایین است؟
-    int penSize;                  // ضخامت قلم (پیکسل)
-    Uint8 penR, penG, penB, penA; // رنگ قلم (RGB)
-    double penHue;                // مقدار hue برای تغییرات (0-360)
-    double penSaturation;         // اشباع (0-100)
-    double penBrightness;         // روشنایی (0-100)
-    vector<PenPoint> penPoints;   // نقاط رسم شده
+    bool penDown;
+    int penSize;
+    Uint8 penR, penG, penB, penA;
+    double penHue;
+    double penSaturation;
+    double penBrightness;
+    vector<PenPoint> penPoints;
     int stageX, stageY, stageW, stageH;
+    int lastExecutedBlock;
 
-    // سازنده پیش‌فرض
+    string currentQuestion;
+    string defaultBackdropFolder;
+
     GameState() :
             activeSpriteIndex(-1),
+            defaultBackdropFolder("backdrops/"),
+            lastExecutedBlock(-1),
+            showVariables(true),
+            isPaused(false),
             currentBlockIndex(0),
             isRunningCode(false),
             stepMode(false),
@@ -212,6 +215,7 @@ struct GameState
             screenWidth(0),
             screenHeight(0),
             currentCategory(0),
+            conditionResult(false),
             waitStartTime(0),
             waitDuration(0),
             isWaiting(false),
@@ -223,6 +227,9 @@ struct GameState
             mouseX(0),
             mouseY(0),
             mousePressed(false),
+            waitingForBroadcast(false),
+            waitingScriptIndex(-1),
+            broadcastWaitStartTime(0),
             waitingForAnswer(false),
             timerStartTime(0),
             dragMode(false),
@@ -266,16 +273,20 @@ struct GameState
             trashY(0),
             trashW(60),
             trashH(60),
-            // مقادیر پیش‌فرض Pen
             penDown(false),
             penSize(1),
-            penR(255),
+            penR(0),
             penG(0),
             penB(0),
             penA(255),
             penHue(0),
             penSaturation(100),
-            penBrightness(100)
+            penBrightness(100),
+            stageX(0),
+            stageY(0),
+            stageW(0),
+            stageH(0),
+            currentQuestion("")
     {
         memset(pressedKeys, 0, SDL_NUM_SCANCODES);
         memset(pressedThisFrame, 0, SDL_NUM_SCANCODES);
@@ -301,36 +312,47 @@ struct GameState
         sensingCategoryBtn = {0,0,0,0,0};
         operatorsCategoryBtn = {0,0,0,0,0};
         variablesCategoryBtn = {0,0,0,0,0};
-        penCategoryBtn = {0,0,0,0,0};  // مقداردهی
+        penCategoryBtn = {0,0,0,0,0};
     }
 };
 
-// توابع اصلی
 void update(GameState& game, SDL_Renderer* renderer);
 void saveProject(const GameState& game, const string& filename);
 void loadProject(GameState& game, const string& filename);
 void reloadAllTextures(GameState& game, SDL_Renderer* renderer);
-
-// توابع مدیریت اسپرایت
 Sprite* getActiveSprite(GameState& game);
 void setActiveSprite(GameState& game, int index);
 void addSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath);
 void removeSprite(GameState& game, int index);
-
-// توابع جدید برای Drag & Drop بلوک
 void initPaletteBlocks(GameState& game);
 Block* getBlockAtPosition(GameState& game, int x, int y);
 void snapBlockToParent(Block* child, Block* parent);
 void detachBlock(Block* block);
 
-// توابع Pen
 void penEraseAll(GameState& game);
 void penStamp(Sprite* sprite, GameState& game, SDL_Renderer* renderer);
-void penSetColor(GameState& game, Uint8 r, Uint8 g, Uint8 b);
 void penSetSize(GameState& game, int size);
 void penChangeSize(GameState& game, int delta);
 void penSetParam(GameState& game, PenColorParam param, double value);
 void penChangeParam(GameState& game, PenColorParam param, double delta);
-void updatePenColorFromHSV(GameState& game); // تبدیل HSV به RGB
+void updatePenColorFromHSV(GameState& game);
+
+void broadcastMessage(GameState& game, const string& messageName, int senderScriptIndex);
+void broadcastMessageAndWait(GameState& game, const string& messageName, int senderScriptIndex);
+void processMessageQueue(GameState& game);
+
+void resetTimer(GameState& game);
+double getTimerValue(GameState& game);
+bool isKeyPressed(GameState& game, int keyCode);
+bool isMouseDown(GameState& game);
+int getMouseX(GameState& game);
+int getMouseY(GameState& game);
+bool isTouchingEdge(Sprite* sprite, GameState& game);
+bool isTouchingMouse(Sprite* sprite, GameState& game);
+double getDistanceToMouse(Sprite* sprite, GameState& game);
+void askQuestion(GameState& game, const string& question);
+
+void preprocessControlBlocks(GameState& game);
+Value evaluateCondition(Block& b, GameState& game);
 
 #endif
