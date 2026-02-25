@@ -51,7 +51,6 @@ struct Button
 
 struct Sprite
 {
-    // فیلدهای قبلی
     double x, y;
     int w, h;
     bool visible;
@@ -64,8 +63,7 @@ struct Sprite
     int index;
     bool isActive;
 
-    // فیلدهای جدید برای costume
-    vector<string> costumes;    // لیست مسیر فایل‌های costume
+    vector<string> costumes;
     int currentCostume;
     int layer;
 
@@ -73,7 +71,7 @@ struct Sprite
             x(0), y(0), w(50), h(50), visible(true), direction(0),
             message(""), name(""), isThinking(false), texture(nullptr),
             imagePath(""), index(0), isActive(false),
-            currentCostume(0), layer(0)  // مقداردهی اولیه
+            currentCostume(0), layer(0)
     {}
 };
 
@@ -160,7 +158,7 @@ struct GameState
     int editingField;
     string editingBuffer;
     bool showSpriteName;
-    bool showVariables;  // در کنار showSpriteName
+    bool showVariables;
 
     int volume;
     bool isPlayingSound;

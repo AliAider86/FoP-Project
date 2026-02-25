@@ -101,7 +101,6 @@ void addDefaultSprite(GameState& game, SDL_Renderer* renderer, const char* name,
     newSprite.isActive = false;
     newSprite.currentCostume = 0;
 
-    // costume‌های پیش‌فرض
     if (imagePath && strlen(imagePath) > 0) {
         newSprite.costumes.push_back(imagePath);
     } else {
@@ -167,7 +166,6 @@ int main(int argc, char* argv[])
 {
     log_info("Program started");
 
-    // استفاده از سازنده GameState برای مقداردهی خودکار
     GameState game;
 
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_TIMER | SDL_INIT_AUDIO) != 0)
@@ -307,7 +305,7 @@ int main(int argc, char* argv[])
     game.sensingCategoryBtn = (Button){20, 335, toolPanelWidth-20, 35, 0};
     game.operatorsCategoryBtn = (Button){20, 380, toolPanelWidth-20, 35, 0};
     game.variablesCategoryBtn = (Button){20, 425, toolPanelWidth-20, 35, 0};
-    game.penCategoryBtn = (Button){20, 470, toolPanelWidth-20, 35, 0}; // اضافه شد
+    game.penCategoryBtn = (Button){20, 470, toolPanelWidth-20, 35, 0};
 
     initDefaultBackdrops(game, renderer);
     initPaletteBlocks(game);

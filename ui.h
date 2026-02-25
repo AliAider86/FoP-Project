@@ -5,7 +5,6 @@
 #include <SDL2/SDL_image.h>
 #include "engine.h"
 
-// اعلان تابع کشیدن متن
 void renderText(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color);
 void addCustomBackdrop(GameState& game, SDL_Renderer* renderer, const char* filePath);
 

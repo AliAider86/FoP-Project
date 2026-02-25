@@ -32,7 +32,6 @@ enum BlockType
     CHANGE_Y,
     SET_X,
     SET_Y,
-    POINT_DIRECTION,
     GOTO_RANDOM,
     GOTO_MOUSE,
     SET_COMPARISON,
@@ -224,7 +223,7 @@ struct Block
             sensorType(SENSOR_TYPE_TOUCHING_EDGE),
             sensorParam(""),
             sensorColorR(0), sensorColorG(0), sensorColorB(0),
-            compareOp(CMP_EQUAL),          // <-- مقداردهی
+            compareOp(CMP_EQUAL),
             leftVar(""),
             rightVar("")
     {}

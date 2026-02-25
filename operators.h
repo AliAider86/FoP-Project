@@ -14,7 +14,6 @@ Value evaluateOperator(BlockType op, const vector<Value>& params)
 
     switch (op)
     {
-        // ریاضی پایه
         case OP_ADD:
             if (params.size() >= 2)
                 return Value(params[0].asNumber() + params[1].asNumber());
@@ -41,16 +40,12 @@ Value evaluateOperator(BlockType op, const vector<Value>& params)
             }
             break;
 
-            // مقایسه‌ای
         case OP_EQUAL:
             if (params.size() >= 2) {
-                // تساوی برای عدد
                 if (params[0].type == VALUE_NUMBER && params[1].type == VALUE_NUMBER)
                     return Value(params[0].asNumber() == params[1].asNumber());
-                // تساوی برای رشته
                 if (params[0].type == VALUE_STRING && params[1].type == VALUE_STRING)
                     return Value(params[0].asString() == params[1].asString());
-                // تساوی برای بولی
                 if (params[0].type == VALUE_BOOLEAN && params[1].type == VALUE_BOOLEAN)
                     return Value(params[0].asBoolean() == params[1].asBoolean());
                 return Value(false);
@@ -67,7 +62,6 @@ Value evaluateOperator(BlockType op, const vector<Value>& params)
                 return Value(params[0].asNumber() > params[1].asNumber());
             break;
 
-            // منطقی
         case OP_NOT:
             return Value(!params[0].asBoolean());
 
@@ -81,7 +75,6 @@ Value evaluateOperator(BlockType op, const vector<Value>& params)
                 return Value(params[0].asBoolean() && params[1].asBoolean());
             break;
 
-            // رشته‌ای
         case OP_JOIN_STRINGS:
             if (params.size() >= 2)
                 return Value(params[0].asString() + params[1].asString());
@@ -101,7 +94,6 @@ Value evaluateOperator(BlockType op, const vector<Value>& params)
             }
             break;
 
-            // ریاضی پیشرفته (امتیازی)
         case OP_ABS:
             return Value(abs(params[0].asNumber()));
 

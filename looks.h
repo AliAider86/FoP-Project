@@ -10,7 +10,6 @@ using namespace std;
 
 void executeLooksBlock(Block& b, GameState& game, SDL_Renderer* renderer)
 {
-    // دریافت اسپرایت فعال
     Sprite* activeSprite = nullptr;
     if (game.activeSpriteIndex >= 0 && game.activeSpriteIndex < game.sprites.size())
     {
@@ -18,7 +17,7 @@ void executeLooksBlock(Block& b, GameState& game, SDL_Renderer* renderer)
     }
     else
     {
-        return; // اسپرایت فعالی وجود ندارد
+        return;
     }
 
     switch (b.type)

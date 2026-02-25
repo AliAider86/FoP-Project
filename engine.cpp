@@ -17,14 +17,11 @@ bool copyFileToFolder(const string& sourcePath, const string& destFolder)
 {
     if (destFolder.empty()) return false;
 
-    // استخراج نام فایل از مسیر اصلی
     size_t pos = sourcePath.find_last_of("/\\");
     string fileName = (pos != string::npos) ? sourcePath.substr(pos + 1) : sourcePath;
 
-    // ساخت مسیر مقصد
     string destPath = destFolder + fileName;
 
-    // کپی فایل به روش ساده
     ifstream src(sourcePath, ios::binary);
     ofstream dst(destPath, ios::binary);
 
@@ -35,7 +32,6 @@ bool copyFileToFolder(const string& sourcePath, const string& destFolder)
     return true;
 }
 
-// ==================== توابع Sensing ====================
 
 void resetTimer(GameState& game)
 {
@@ -79,9 +75,6 @@ bool isTouchingEdge(Sprite* sprite, GameState& game)
 bool isTouchingMouse(Sprite* sprite, GameState& game)
 {
     if (!sprite) return false;
-    // تبدیل مختصات موس به فضای صفحه (موس در فضای پنجره است)
-    // باید مختصات موس را نسبت به stage در نظر گرفت
-    // فعلاً یک پیاده‌سازی ساده
     int stagePanelX = game.codeAreaX + game.codeAreaWidth + 10;
     int stagePanelWidth = game.screenWidth - stagePanelX - 5;
     if (stagePanelWidth > 500) stagePanelWidth = 500;
@@ -90,7 +83,6 @@ bool isTouchingMouse(Sprite* sprite, GameState& game)
     int stageWidth = stagePanelWidth - 20;
     int stageHeight = 300;
 
-    // تبدیل مختصات اسپرایت به مختصات stage
     int spriteStageX = stageX + (int)((sprite->x / game.screenWidth) * stageWidth);
     int spriteStageY = stageY + (int)((sprite->y / game.screenHeight) * stageHeight);
     int spriteStageW = (int)((sprite->w / game.screenWidth) * stageWidth);
@@ -124,12 +116,8 @@ void askQuestion(GameState& game, const string& question)
     game.currentQuestion = question;
     game.waitingForAnswer = true;
     game.answer = "";
-    // در اینجا می‌توان یک باکس ورودی در رابط کاربری نمایش داد
-    // اما فعلاً فقط لاگ می‌کنیم
     log_info(("Ask: " + question).c_str());
 }
-
-// ==================== توابع Events ====================
 
 void broadcastMessage(GameState& game, const string& messageName, int senderScriptIndex)
 {
@@ -178,8 +166,6 @@ void processMessageQueue(GameState& game)
         }
     }
 }
-
-// ==================== توابع Pen ====================
 
 void updatePenColorFromHSV(GameState& game)
 {
@@ -288,13 +274,9 @@ void penChangeParam(GameState& game, PenColorParam param, double delta)
     updatePenColorFromHSV(game);
 }
 
-// ==================== توابع Control ====================
 
 Value evaluateCondition(Block& b, GameState& game)
 {
-    // این تابع باید بر اساس نوع بلوک و پارامترها، مقدار شرط را محاسبه کند
-    // در این نسخه ساده، فرض می‌کنیم اولین پارامتر یک مقدار عددی است
-    // و اگر != 0 باشد، شرط درست است
     if (!b.parameters.empty())
     {
         return Value(b.parameters[0].asBoolean());
@@ -304,7 +286,6 @@ Value evaluateCondition(Block& b, GameState& game)
 
 void preprocessControlBlocks(GameState& game)
 {
-    // پیمایش تمام بلوک‌ها و پیدا کردن جفت‌های IF/END_IF
     vector<int> ifStack;
     vector<int> elseIndices;
 
@@ -315,7 +296,7 @@ void preprocessControlBlocks(GameState& game)
         if (b.type == IF_THEN || b.type == IF_THEN_ELSE)
         {
             ifStack.push_back(i);
-            b.endIfIndex = -1; // فعلاً نامشخص
+            b.endIfIndex = -1;
         }
         else if (b.type == ELSE)
         {
@@ -328,18 +309,15 @@ void preprocessControlBlocks(GameState& game)
                 int ifIndex = ifStack.back();
                 ifStack.pop_back();
 
-                // تنظیم آدرس END_IF برای IF
                 game.program[ifIndex].endIfIndex = i;
 
-                // اگر IF از نوع IF_THEN_ELSE باشد، باید ELSE مربوطه را هم پیدا کنیم
                 if (game.program[ifIndex].type == IF_THEN_ELSE)
                 {
-                    // پیدا کردن ELSE بین ifIndex و i
                     for (int j = ifIndex + 1; j < i; j++)
                     {
                         if (game.program[j].type == ELSE)
                         {
-                            game.program[ifIndex].ifFalseJump = j + 1; // پرش به بعد از ELSE
+                            game.program[ifIndex].ifFalseJump = j + 1;
                             break;
                         }
                     }
@@ -348,8 +326,6 @@ void preprocessControlBlocks(GameState& game)
         }
     }
 }
-
-// ==================== initPaletteBlocks ====================
 
 void initPaletteBlocks(GameState& game)
 {
@@ -361,8 +337,6 @@ void initPaletteBlocks(GameState& game)
     int xPos = 10;
     int paletteId = 0;
 
-    // ===== بلوک‌های حرکتی (آبی) - CAT_MOTION =====
-    // حرکت به بالا
     Block moveUpBlock(MOVE_UP, CAT_MOTION);
     moveUpBlock.eventName = "move up 10 steps";
     moveUpBlock.parameters.push_back(Value(10.0));
@@ -373,7 +347,6 @@ void initPaletteBlocks(GameState& game)
     moveUpBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(moveUpBlock);
 
-    // حرکت به پایین
     Block moveDownBlock(MOVE_DOWN, CAT_MOTION);
     moveDownBlock.eventName = "move down 10 steps";
     moveDownBlock.parameters.push_back(Value(10.0));
@@ -384,7 +357,6 @@ void initPaletteBlocks(GameState& game)
     moveDownBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(moveDownBlock);
 
-    // حرکت به چپ
     Block moveLeftBlock(MOVE_LEFT, CAT_MOTION);
     moveLeftBlock.eventName = "move left 10 steps";
     moveLeftBlock.parameters.push_back(Value(10.0));
@@ -395,7 +367,6 @@ void initPaletteBlocks(GameState& game)
     moveLeftBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(moveLeftBlock);
 
-    // حرکت به راست
     Block moveRightBlock(MOVE_RIGHT, CAT_MOTION);
     moveRightBlock.eventName = "move right 10 steps";
     moveRightBlock.parameters.push_back(Value(10.0));
@@ -406,7 +377,6 @@ void initPaletteBlocks(GameState& game)
     moveRightBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(moveRightBlock);
 
-    // چرخش به راست
     Block turnRightBlock(TURN_RIGHT, CAT_MOTION);
     turnRightBlock.eventName = "turn right 15 degrees";
     turnRightBlock.parameters.push_back(Value(15.0));
@@ -417,7 +387,6 @@ void initPaletteBlocks(GameState& game)
     turnRightBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(turnRightBlock);
 
-    // چرخش به چپ
     Block turnLeftBlock(TURN_LEFT, CAT_MOTION);
     turnLeftBlock.eventName = "turn left 15 degrees";
     turnLeftBlock.parameters.push_back(Value(15.0));
@@ -428,7 +397,6 @@ void initPaletteBlocks(GameState& game)
     turnLeftBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(turnLeftBlock);
 
-    // رفتن به مختصات
     Block gotoXYBlock(GOTO_XY, CAT_MOTION);
     gotoXYBlock.eventName = "go to x: 100 y: 100";
     gotoXYBlock.parameters.push_back(Value(100.0));
@@ -440,7 +408,6 @@ void initPaletteBlocks(GameState& game)
     gotoXYBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(gotoXYBlock);
 
-    // رفتن به موس
     Block gotoMouseBlock(GOTO_MOUSE, CAT_MOTION);
     gotoMouseBlock.eventName = "go to mouse-pointer";
     gotoMouseBlock.x = xPos;
@@ -450,7 +417,6 @@ void initPaletteBlocks(GameState& game)
     gotoMouseBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(gotoMouseBlock);
 
-    // رفتن به موقعیت تصادفی
     Block gotoRandomBlock(GOTO_RANDOM, CAT_MOTION);
     gotoRandomBlock.eventName = "go to random position";
     gotoRandomBlock.parameters.push_back(Value(1.0));
@@ -461,7 +427,6 @@ void initPaletteBlocks(GameState& game)
     gotoRandomBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(gotoRandomBlock);
 
-    // تغییر x
     Block changeXBlock(CHANGE_X, CAT_MOTION);
     changeXBlock.eventName = "change x by 10";
     changeXBlock.parameters.push_back(Value(10.0));
@@ -472,7 +437,6 @@ void initPaletteBlocks(GameState& game)
     changeXBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(changeXBlock);
 
-    // تنظیم x
     Block setXBlock(SET_X, CAT_MOTION);
     setXBlock.eventName = "set x to 0";
     setXBlock.parameters.push_back(Value(0.0));
@@ -483,7 +447,6 @@ void initPaletteBlocks(GameState& game)
     setXBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setXBlock);
 
-    // تغییر y
     Block changeYBlock(CHANGE_Y, CAT_MOTION);
     changeYBlock.eventName = "change y by 10";
     changeYBlock.parameters.push_back(Value(10.0));
@@ -494,7 +457,6 @@ void initPaletteBlocks(GameState& game)
     changeYBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(changeYBlock);
 
-    // تنظیم y
     Block setYBlock(SET_Y, CAT_MOTION);
     setYBlock.eventName = "set y to 0";
     setYBlock.parameters.push_back(Value(0.0));
@@ -508,13 +470,12 @@ void initPaletteBlocks(GameState& game)
     Block goFrontBlock(GO_TO_FRONT_LAYER, CAT_LOOKS);
     goFrontBlock.eventName = "go to front layer";
     goFrontBlock.x = xPos;
-    goFrontBlock.y = startY + 360;  // بعد از set size
+    goFrontBlock.y = startY + 360;
     goFrontBlock.width = blockWidth;
     goFrontBlock.height = blockHeight;
     goFrontBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(goFrontBlock);
 
-// Go to back layer
     Block goBackBlock(GO_TO_BACK_LAYER, CAT_LOOKS);
     goBackBlock.eventName = "go to back layer";
     goBackBlock.x = xPos;
@@ -524,7 +485,6 @@ void initPaletteBlocks(GameState& game)
     goBackBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(goBackBlock);
 
-// Go forward layers
     Block goForwardBlock(GO_FORWARD_LAYERS, CAT_LOOKS);
     goForwardBlock.eventName = "go forward 1 layers";
     goForwardBlock.parameters.push_back(Value(1.0));
@@ -535,7 +495,6 @@ void initPaletteBlocks(GameState& game)
     goForwardBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(goForwardBlock);
 
-// Go backward layers
     Block goBackwardBlock(GO_BACKWARD_LAYERS, CAT_LOOKS);
     goBackwardBlock.eventName = "go backward 1 layers";
     goBackwardBlock.parameters.push_back(Value(1.0));
@@ -546,7 +505,6 @@ void initPaletteBlocks(GameState& game)
     goBackwardBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(goBackwardBlock);
 
-    // ===== بلوک‌های ظاهری (نیلی) - CAT_LOOKS =====
     startY = 110;
 
     Block sayForBlock(SAY_FOR, CAT_LOOKS);
@@ -629,7 +587,6 @@ void initPaletteBlocks(GameState& game)
     setSizeBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setSizeBlock);
 
-    // ===== بلوک‌های صدا (بنفش) - CAT_SOUND =====
     startY = 110;
 
     Block playSoundBlock(PLAY_SOUND, CAT_SOUND);
@@ -681,7 +638,7 @@ void initPaletteBlocks(GameState& game)
     setVolumeBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setVolumeBlock);
 
-    // ===== بلوک‌های رویداد (زرد) - CAT_EVENTS =====
+
     startY = 110;
 
     Block whenFlagBlock(WHEN_GREEN_FLAG, CAT_EVENTS);
@@ -742,10 +699,8 @@ void initPaletteBlocks(GameState& game)
     broadcastWaitBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(broadcastWaitBlock);
 
-    // ===== بلوک‌های کنترل (نارنجی) - CAT_CONTROL (کامل شده) =====
     startY = 110;
 
-    // Wait
     Block waitBlock(WAIT, CAT_CONTROL);
     waitBlock.eventName = "wait 1 seconds";
     waitBlock.parameters.push_back(Value(1.0));
@@ -756,7 +711,6 @@ void initPaletteBlocks(GameState& game)
     waitBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(waitBlock);
 
-    // Repeat
     Block repeatBlock(REPEAT, CAT_CONTROL);
     repeatBlock.eventName = "repeat 10";
     repeatBlock.repeatCount = 10;
@@ -767,7 +721,6 @@ void initPaletteBlocks(GameState& game)
     repeatBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(repeatBlock);
 
-    // Forever
     Block foreverBlock(FOREVER, CAT_CONTROL);
     foreverBlock.eventName = "forever";
     foreverBlock.x = xPos;
@@ -777,10 +730,9 @@ void initPaletteBlocks(GameState& game)
     foreverBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(foreverBlock);
 
-    // If Then
     Block ifThenBlock(IF_THEN, CAT_CONTROL);
     ifThenBlock.eventName = "if <condition> then";
-    ifThenBlock.parameters.push_back(Value(true)); // شرط پیش‌فرض
+    ifThenBlock.parameters.push_back(Value(true));
     ifThenBlock.x = xPos;
     ifThenBlock.y = startY + 135;
     ifThenBlock.width = blockWidth;
@@ -788,7 +740,6 @@ void initPaletteBlocks(GameState& game)
     ifThenBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(ifThenBlock);
 
-    // If Then Else
     Block ifThenElseBlock(IF_THEN_ELSE, CAT_CONTROL);
     ifThenElseBlock.eventName = "if <condition> then else";
     ifThenElseBlock.parameters.push_back(Value(true));
@@ -799,7 +750,6 @@ void initPaletteBlocks(GameState& game)
     ifThenElseBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(ifThenElseBlock);
 
-    // End If
     Block endIfBlock(END_IF, CAT_CONTROL);
     endIfBlock.eventName = "end if";
     endIfBlock.x = xPos;
@@ -809,7 +759,6 @@ void initPaletteBlocks(GameState& game)
     endIfBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(endIfBlock);
 
-    // Wait Until
     Block waitUntilBlock(WAIT_UNTIL, CAT_CONTROL);
     waitUntilBlock.eventName = "wait until <condition>";
     waitUntilBlock.parameters.push_back(Value(true));
@@ -820,7 +769,6 @@ void initPaletteBlocks(GameState& game)
     waitUntilBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(waitUntilBlock);
 
-    // Repeat Until
     Block repeatUntilBlock(REPEAT_UNTIL, CAT_CONTROL);
     repeatUntilBlock.eventName = "repeat until <condition>";
     repeatUntilBlock.parameters.push_back(Value(false));
@@ -831,7 +779,6 @@ void initPaletteBlocks(GameState& game)
     repeatUntilBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(repeatUntilBlock);
 
-    // Stop All
     Block stopAllBlock(STOP_ALL, CAT_CONTROL);
     stopAllBlock.eventName = "stop all";
     stopAllBlock.x = xPos;
@@ -841,7 +788,6 @@ void initPaletteBlocks(GameState& game)
     stopAllBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(stopAllBlock);
 
-    // Stop This Script
     Block stopThisScriptBlock(STOP_THIS_SCRIPT, CAT_CONTROL);
     stopThisScriptBlock.eventName = "stop this script";
     stopThisScriptBlock.x = xPos;
@@ -851,17 +797,15 @@ void initPaletteBlocks(GameState& game)
     stopThisScriptBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(stopThisScriptBlock);
 
-    // End Repeat
     Block endRepeatBlock(END_REPEAT, CAT_CONTROL);
     endRepeatBlock.eventName = "end repeat";
     endRepeatBlock.x = xPos;
-    endRepeatBlock.y = startY + 495; // تنظیم موقعیت مناسب
+    endRepeatBlock.y = startY + 495;
     endRepeatBlock.width = blockWidth;
     endRepeatBlock.height = blockHeight;
     endRepeatBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(endRepeatBlock);
 
-// End Forever
     Block endForeverBlock(END_FOREVER, CAT_CONTROL);
     endForeverBlock.eventName = "end forever";
     endForeverBlock.x = xPos;
@@ -871,10 +815,8 @@ void initPaletteBlocks(GameState& game)
     endForeverBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(endForeverBlock);
 
-    // ===== بلوک‌های حسگری (Sensing) - CAT_SENSING =====
     startY = 110;
 
-    // Reset Timer
     Block resetTimerBlock(SENSOR_RESET_TIMER, CAT_SENSING);
     resetTimerBlock.eventName = "reset timer";
     resetTimerBlock.x = xPos;
@@ -884,7 +826,6 @@ void initPaletteBlocks(GameState& game)
     resetTimerBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(resetTimerBlock);
 
-    // Ask and Wait
     Block askBlock(SENSOR_ASK_AND_WAIT, CAT_SENSING);
     askBlock.eventName = "ask What's your name? and wait";
     askBlock.parameters.push_back(Value(string("What's your name?")));
@@ -895,7 +836,6 @@ void initPaletteBlocks(GameState& game)
     askBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(askBlock);
 
-    // Set variable to sensor (touching edge)
     Block setToTouchingEdge(SET_VARIABLE_TO_SENSOR, CAT_SENSING);
     setToTouchingEdge.eventName = "set myVar to touching edge?";
     setToTouchingEdge.variableName = "myVar";
@@ -907,7 +847,6 @@ void initPaletteBlocks(GameState& game)
     setToTouchingEdge.paletteId = paletteId++;
     game.paletteBlocks.push_back(setToTouchingEdge);
 
-    // Set variable to sensor (mouse x)
     Block setToMouseX(SET_VARIABLE_TO_SENSOR, CAT_SENSING);
     setToMouseX.eventName = "set myVar to mouse x";
     setToMouseX.variableName = "myVar";
@@ -919,7 +858,6 @@ void initPaletteBlocks(GameState& game)
     setToMouseX.paletteId = paletteId++;
     game.paletteBlocks.push_back(setToMouseX);
 
-    // Set variable to sensor (timer)
     Block setToTimer(SET_VARIABLE_TO_SENSOR, CAT_SENSING);
     setToTimer.eventName = "set myVar to timer";
     setToTimer.variableName = "myVar";
@@ -931,7 +869,7 @@ void initPaletteBlocks(GameState& game)
     setToTimer.paletteId = paletteId++;
     game.paletteBlocks.push_back(setToTimer);
 
-    // Set variable to sensor (key pressed)
+
     Block setToKeyPressed(SET_VARIABLE_TO_SENSOR, CAT_SENSING);
     setToKeyPressed.eventName = "set myVar to key space pressed?";
     setToKeyPressed.variableName = "myVar";
@@ -944,7 +882,7 @@ void initPaletteBlocks(GameState& game)
     setToKeyPressed.paletteId = paletteId++;
     game.paletteBlocks.push_back(setToKeyPressed);
 
-    // ===== بلوک‌های عملگر (سبز) - CAT_OPERATORS =====
+
     startY = 110;
 
     Block addBlock(OP_ADD, CAT_OPERATORS);
@@ -967,7 +905,7 @@ void initPaletteBlocks(GameState& game)
     setCompBlock.leftVar = "";
     setCompBlock.rightVar = "";
     setCompBlock.x = xPos;
-    setCompBlock.y = startY + 585; // بعد از سایر بلوک‌های عملگر
+    setCompBlock.y = startY + 585;
     setCompBlock.width = blockWidth;
     setCompBlock.height = blockHeight;
     setCompBlock.paletteId = paletteId++;
@@ -1103,7 +1041,6 @@ void initPaletteBlocks(GameState& game)
     letterOfBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(letterOfBlock);
 
-    // ===== بلوک‌های متغیر (نارنجی پررنگ) - CAT_VARIABLES =====
     startY = 110;
 
     Block setVarBlock(SET_VARIABLE, CAT_VARIABLES);
@@ -1148,18 +1085,16 @@ void initPaletteBlocks(GameState& game)
     hideVarBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(hideVarBlock);
 
-    // Costume number
     Block costumeNumBlock(COSTUME_NUMBER, CAT_LOOKS);
     costumeNumBlock.eventName = "set myVar to costume number";
     costumeNumBlock.variableName = "myVar";
     costumeNumBlock.x = xPos;
-    costumeNumBlock.y = startY + 360; // بعد از set size
+    costumeNumBlock.y = startY + 360;
     costumeNumBlock.width = blockWidth;
     costumeNumBlock.height = blockHeight;
     costumeNumBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(costumeNumBlock);
 
-// Sprite size
     Block spriteSizeBlock(SPRITE_SIZE, CAT_LOOKS);
     spriteSizeBlock.eventName = "set myVar to size";
     spriteSizeBlock.variableName = "myVar";
@@ -1170,7 +1105,6 @@ void initPaletteBlocks(GameState& game)
     spriteSizeBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(spriteSizeBlock);
 
-// Backdrop number
     Block backdropNumBlock(BACKDROP_NUMBER, CAT_LOOKS);
     backdropNumBlock.eventName = "set myVar to backdrop number";
     backdropNumBlock.variableName = "myVar";
@@ -1181,10 +1115,8 @@ void initPaletteBlocks(GameState& game)
     backdropNumBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(backdropNumBlock);
 
-    // ===== بلوک‌های ترسیمی (Pen) - CAT_PEN =====
     startY = 110;
 
-    // Erase All
     Block eraseAllBlock(PEN_ERASE_ALL, CAT_PEN);
     eraseAllBlock.eventName = "erase all";
     eraseAllBlock.x = xPos;
@@ -1194,7 +1126,6 @@ void initPaletteBlocks(GameState& game)
     eraseAllBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(eraseAllBlock);
 
-    // Stamp
     Block stampBlock(PEN_STAMP, CAT_PEN);
     stampBlock.eventName = "stamp";
     stampBlock.x = xPos;
@@ -1204,7 +1135,6 @@ void initPaletteBlocks(GameState& game)
     stampBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(stampBlock);
 
-    // Pen Down
     Block penDownBlock(PEN_PEN_DOWN, CAT_PEN);
     penDownBlock.eventName = "pen down";
     penDownBlock.x = xPos;
@@ -1214,7 +1144,6 @@ void initPaletteBlocks(GameState& game)
     penDownBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(penDownBlock);
 
-    // Pen Up
     Block penUpBlock(PEN_PEN_UP, CAT_PEN);
     penUpBlock.eventName = "pen up";
     penUpBlock.x = xPos;
@@ -1224,7 +1153,6 @@ void initPaletteBlocks(GameState& game)
     penUpBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(penUpBlock);
 
-    // Set Pen Color
     Block setColorBlock(PEN_SET_COLOR_PARAM, CAT_PEN);
     setColorBlock.eventName = "set pen color to 0";
     setColorBlock.parameters.push_back(Value(0.0));
@@ -1236,7 +1164,6 @@ void initPaletteBlocks(GameState& game)
     setColorBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setColorBlock);
 
-    // Change Pen Color by
     Block changeColorBlock(PEN_CHANGE_COLOR_PARAM, CAT_PEN);
     changeColorBlock.eventName = "change pen color by 10";
     changeColorBlock.parameters.push_back(Value(10.0));
@@ -1248,7 +1175,6 @@ void initPaletteBlocks(GameState& game)
     changeColorBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(changeColorBlock);
 
-    // Set Pen Saturation
     Block setSaturationBlock(PEN_SET_COLOR_PARAM, CAT_PEN);
     setSaturationBlock.eventName = "set pen saturation to 100";
     setSaturationBlock.parameters.push_back(Value(100.0));
@@ -1260,7 +1186,6 @@ void initPaletteBlocks(GameState& game)
     setSaturationBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setSaturationBlock);
 
-    // Change Pen Saturation by
     Block changeSaturationBlock(PEN_CHANGE_COLOR_PARAM, CAT_PEN);
     changeSaturationBlock.eventName = "change pen saturation by 10";
     changeSaturationBlock.parameters.push_back(Value(10.0));
@@ -1272,7 +1197,6 @@ void initPaletteBlocks(GameState& game)
     changeSaturationBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(changeSaturationBlock);
 
-    // Set Pen Brightness
     Block setBrightnessBlock(PEN_SET_COLOR_PARAM, CAT_PEN);
     setBrightnessBlock.eventName = "set pen brightness to 100";
     setBrightnessBlock.parameters.push_back(Value(100.0));
@@ -1284,7 +1208,6 @@ void initPaletteBlocks(GameState& game)
     setBrightnessBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setBrightnessBlock);
 
-    // Change Pen Brightness by
     Block changeBrightnessBlock(PEN_CHANGE_COLOR_PARAM, CAT_PEN);
     changeBrightnessBlock.eventName = "change pen brightness by 10";
     changeBrightnessBlock.parameters.push_back(Value(10.0));
@@ -1296,7 +1219,6 @@ void initPaletteBlocks(GameState& game)
     changeBrightnessBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(changeBrightnessBlock);
 
-    // Set Pen Size
     Block setPenSizeBlock(PEN_SET_SIZE, CAT_PEN);
     setPenSizeBlock.eventName = "set pen size to 1";
     setPenSizeBlock.parameters.push_back(Value(1.0));
@@ -1307,7 +1229,6 @@ void initPaletteBlocks(GameState& game)
     setPenSizeBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setPenSizeBlock);
 
-    // Change Pen Size by
     Block changePenSizeBlock(PEN_CHANGE_SIZE, CAT_PEN);
     changePenSizeBlock.eventName = "change pen size by 1";
     changePenSizeBlock.parameters.push_back(Value(1.0));
@@ -1321,11 +1242,9 @@ void initPaletteBlocks(GameState& game)
     log_info(("Palette blocks initialized: " + to_string(game.paletteBlocks.size()) + " blocks").c_str());
 }
 
-// ==================== بقیه توابع ====================
 
 Block* getBlockAtPosition(GameState& game, int x, int y)
 {
-    // اول بلوک‌های برنامه رو بررسی کن (از آخر به اول برای اولویت)
     for (int i = game.program.size() - 1; i >= 0; i--)
     {
         Block& block = game.program[i];
@@ -1336,7 +1255,6 @@ Block* getBlockAtPosition(GameState& game, int x, int y)
         }
     }
 
-    // بعد بلوک‌های پالت رو بررسی کن
     for (int i = game.paletteBlocks.size() - 1; i >= 0; i--)
     {
         Block& block = game.paletteBlocks[i];
@@ -1380,11 +1298,9 @@ void addCustomBackdrop(GameState& game, SDL_Renderer* renderer, const char* file
 {
     if (!filePath || filePath[0] == '\0') return;
 
-    // کپی به پوشه پیش‌فرض
     string copiedPath = filePath;
     if (copyFileToFolder(filePath, game.defaultBackdropFolder))
     {
-        // اگر کپی موفق بود، از فایل کپی شده استفاده کن
         size_t pos = string(filePath).find_last_of("/\\");
         string fileName = (pos != string::npos) ? string(filePath).substr(pos + 1) : string(filePath);
         copiedPath = game.defaultBackdropFolder + fileName;
@@ -1399,10 +1315,10 @@ void addCustomBackdrop(GameState& game, SDL_Renderer* renderer, const char* file
     string nameWithoutExt = (dotPos != string::npos) ? fileName.substr(0, dotPos) : fileName;
 
     b.name = "Custom: " + nameWithoutExt;
-    b.filePath = copiedPath;  // از مسیر کپی شده استفاده کن
+    b.filePath = copiedPath;
     b.isCustom = true;
 
-    SDL_Surface* surface = IMG_Load(copiedPath.c_str());  // از مسیر جدید لود کن
+    SDL_Surface* surface = IMG_Load(copiedPath.c_str());
     if (surface)
     {
         b.texture = SDL_CreateTextureFromSurface(renderer, surface);
@@ -1534,18 +1450,16 @@ void addSprite(GameState& game, SDL_Renderer* renderer, const char* name, const 
     newSprite.isActive = false;
     newSprite.currentCostume = 0;
 
-    // اضافه کردن costume‌های پیش‌فرض
-    // costume اول (همان imagePath ورودی یا "cat.png")
     if (imagePath && strlen(imagePath) > 0) {
         newSprite.costumes.push_back(imagePath);
     } else {
         newSprite.costumes.push_back("cat.png");
     }
-    // دو costume اضافی
+
     newSprite.costumes.push_back("dog.png");
     newSprite.costumes.push_back("bird.png");
 
-    // تنظیم imagePath فعلی به اولین costume
+
     newSprite.imagePath = newSprite.costumes[0];
 
     if (renderer && !newSprite.imagePath.empty())
@@ -1592,7 +1506,6 @@ void saveProject(const GameState& game, const string& filename)
         return;
     }
 
-    // Backdrops
     file << "Backdrops " << game.backdrops.size() << "\n";
     for (const auto& b : game.backdrops)
     {
@@ -1602,7 +1515,6 @@ void saveProject(const GameState& game, const string& filename)
     }
     file << "CurrentBackdrop " << game.currentBackdrop << "\n";
 
-    // Sprites
     file << "Sprites " << game.sprites.size() << "\n";
     for (const Sprite& s : game.sprites)
     {
@@ -1617,7 +1529,6 @@ void saveProject(const GameState& game, const string& filename)
              << safeName << " " << safeImagePath << " "
              << s.index << " " << s.isActive << "\n";
 
-        // Costumes
         file << "Costumes " << s.costumes.size() << " ";
         for (const string& costume : s.costumes)
         {
@@ -1629,7 +1540,6 @@ void saveProject(const GameState& game, const string& filename)
     }
     file << "ActiveSprite " << game.activeSpriteIndex << "\n";
 
-    // Blocks
     file << "Blocks " << game.program.size() << "\n";
     for (const Block& b : game.program)
     {
@@ -1672,7 +1582,6 @@ void saveProject(const GameState& game, const string& filename)
              << safeEditingBuffer << "\n";
     }
 
-    // Variables
     file << "Variables " << game.variables.size() << "\n";
     for (const auto& var : game.variables)
     {
@@ -1706,7 +1615,6 @@ void loadProject(GameState& game, const string& filename)
         return;
     }
 
-    // پاک کردن داده‌های قبلی
     for (auto& s : game.sprites) if (s.texture) SDL_DestroyTexture(s.texture);
     for (auto& b : game.backdrops) if (b.texture) SDL_DestroyTexture(b.texture);
     game.sprites.clear();
@@ -1754,11 +1662,10 @@ void loadProject(GameState& game, const string& filename)
             int count; iss >> count;
             for (int i = 0; i < count; i++)
             {
-                // خط Sprite
                 if (!getline(file, line)) break;
                 istringstream iss2(line);
                 string spriteToken;
-                iss2 >> spriteToken; // باید "Sprite" باشد
+                iss2 >> spriteToken;
                 Sprite s;
                 string name, imagePath;
                 iss2 >> s.x >> s.y >> s.w >> s.h >> s.visible >> s.direction >> name >> imagePath >> s.index >> s.isActive;
@@ -1771,11 +1678,10 @@ void loadProject(GameState& game, const string& filename)
                 s.texture = nullptr;
                 s.currentCostume = 0;
 
-                // خط Costumes
                 if (!getline(file, line)) break;
                 istringstream iss3(line);
                 string costumeToken;
-                iss3 >> costumeToken; // باید "Costumes" باشد
+                iss3 >> costumeToken;
                 int costumeCount;
                 iss3 >> costumeCount;
                 for (int j = 0; j < costumeCount; j++)
@@ -1802,7 +1708,7 @@ void loadProject(GameState& game, const string& filename)
                 if (!getline(file, line)) break;
                 istringstream iss2(line);
                 string blockToken;
-                iss2 >> blockToken; // باید "Block" باشد
+                iss2 >> blockToken;
                 Block b;
                 int typeInt, paramCount;
                 iss2 >> typeInt >> paramCount;
@@ -1856,10 +1762,9 @@ void loadProject(GameState& game, const string& filename)
                 b.penParam = (PenColorParam)penParamInt;
                 b.editingBuffer = editingBuffer;
 
-                // reset editing mode
                 b.editingMode = false;
                 b.editingField = -1;
-                b.editingBuffer = ""; // بازنشانی برای اجرا
+                b.editingBuffer = "";
 
                 game.program.push_back(b);
             }
@@ -1898,7 +1803,6 @@ void loadProject(GameState& game, const string& filename)
     log_info(("Project loaded from " + filename).c_str());
 }
 
-// ==================== تابع اصلی update (کامل شده با Control) ====================
 
 void update(GameState& game, SDL_Renderer* renderer)
 {
@@ -1915,7 +1819,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         }
     }
 
-    // پیش‌پردازش بلوک‌های کنترلی (اگر لازم باشد)
     static bool preprocessed = false;
     if (!preprocessed)
     {
@@ -1923,7 +1826,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         preprocessed = true;
     }
 
-    // پردازش صف پیام‌ها
     processMessageQueue(game);
 
     if (!game.isRunningCode)
@@ -1950,7 +1852,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         return;
     }
 
-    // رویداد Green Flag
     if (game.greenFlagPressed)
     {
         log_info("Green flag pressed - starting program");
@@ -1971,7 +1872,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         }
     }
 
-    // رویداد کلیک روی اسپرایت
     if (game.spriteClicked && game.clickedSpriteIndex >= 0)
     {
         log_info(("Sprite clicked: " + game.sprites[game.clickedSpriteIndex].name).c_str());
@@ -1988,7 +1888,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         }
     }
 
-    // رویداد کلید فشرده
     for (int i = 0; i < game.program.size(); i++)
     {
         if (game.program[i].type == WHEN_KEY_PRESSED)
@@ -2016,7 +1915,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         }
     }
 
-    // ===== اجرای اسکریپت‌های فعال =====
     if (game.stepMode)
     {
         bool anyBlockExecuted = false;
@@ -2035,7 +1933,6 @@ void update(GameState& game, SDL_Renderer* renderer)
             Block& b = game.program[scriptPC];
             bool blockCompleted = false;
 
-            // STOP_ALL
             if (b.type == STOP_ALL)
             {
                 log_info("Stop all scripts");
@@ -2043,14 +1940,12 @@ void update(GameState& game, SDL_Renderer* renderer)
                 game.scriptActive.assign(game.scriptActive.size(), false);
                 blockCompleted = true;
             }
-                // STOP_THIS_SCRIPT
             else if (b.type == STOP_THIS_SCRIPT)
             {
                 log_info("Stop this script");
                 game.scriptActive[s] = false;
                 blockCompleted = true;
             }
-                // WAIT_UNTIL
             else if (b.type == WAIT_UNTIL)
             {
                 if (!b.parameters.empty())
@@ -2068,7 +1963,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                     blockCompleted = true;
                 }
             }
-                // REPEAT_UNTIL
             else if (b.type == REPEAT_UNTIL)
             {
                 if (!b.parameters.empty())
@@ -2095,7 +1989,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                     blockCompleted = true;
                 }
             }
-                // IF_THEN
             else if (b.type == IF_THEN)
             {
                 bool condition = b.parameters.empty() ? true : b.parameters[0].asBoolean();
@@ -2107,7 +2000,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 blockCompleted = true;
             }
-                // IF_THEN_ELSE
             else if (b.type == IF_THEN_ELSE)
             {
                 bool condition = b.parameters.empty() ? true : b.parameters[0].asBoolean();
@@ -2121,20 +2013,17 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 blockCompleted = true;
             }
-                // END_IF
             else if (b.type == END_IF)
             {
                 if (!game.ifStack.empty()) game.ifStack.pop();
                 scriptPC++; blockCompleted = true;
             }
-                // REPEAT
             else if (b.type == REPEAT)
             {
                 game.repeatCountStack.push_back(b.repeatCount);
                 game.repeatStartStack.push_back(scriptPC + 1);
                 scriptPC++; blockCompleted = true;
             }
-                // END_REPEAT
             else if (b.type == END_REPEAT)
             {
                 if (!game.repeatCountStack.empty())
@@ -2146,19 +2035,16 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 blockCompleted = true;
             }
-                // FOREVER
             else if (b.type == FOREVER)
             {
                 game.repeatStartStack.push_back(scriptPC + 1);
                 scriptPC++; blockCompleted = true;
             }
-                // END_FOREVER
             else if (b.type == END_FOREVER)
             {
                 if (!game.repeatStartStack.empty()) scriptPC = game.repeatStartStack.back();
                 blockCompleted = true;
             }
-                // WAIT
             else if (b.type == WAIT)
             {
                 if (!game.isWaiting)
@@ -2177,20 +2063,16 @@ void update(GameState& game, SDL_Renderer* renderer)
                     blockCompleted = true;
                 }
             }
-                // BROADCAST
             else if (b.type == BROADCAST)
             {
                 if (!b.messageName.empty()) broadcastMessage(game, b.messageName, s);
                 scriptPC++; blockCompleted = true;
             }
-                // BROADCAST_AND_WAIT
             else if (b.type == BROADCAST_AND_WAIT)
             {
                 if (!b.messageName.empty()) broadcastMessageAndWait(game, b.messageName, s);
                 scriptPC++; blockCompleted = true;
             }
-                // SAY, THINK, ...
-                // SAY, THINK, SAY_FOR, THINK_FOR
             else if (b.type == SAY || b.type == SAY_FOR || b.type == THINK || b.type == THINK_FOR)
             {
                 if (!activeSprite) continue;
@@ -2211,15 +2093,14 @@ void update(GameState& game, SDL_Renderer* renderer)
                     }
                     else
                     {
-                        // برای SAY و THINK ساده، پیام مادام‌العمر است
+
                         game.isShowingMessage = true;
-                        game.messageDuration = 0; // به معنی عدم انقضا
+                        game.messageDuration = 0;
                     }
                 }
                 scriptPC++;
                 blockCompleted = true;
             }
-                // SHOW, HIDE, CHANGE_SIZE, SET_SIZE
             else if (b.type == SHOW)
             {
                 if (activeSprite) activeSprite->visible = true;
@@ -2259,7 +2140,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 scriptPC++; blockCompleted = true;
             }
-                // SOUND
             else if (b.type == PLAY_SOUND || b.type == PLAY_SOUND_UNTIL_DONE)
             {
                 if (game.soundEffect)
@@ -2297,13 +2177,11 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 scriptPC++; blockCompleted = true;
             }
-                // OPERATORS
             else if (b.type >= OP_ADD && b.type <= OP_XOR)
             {
                 Value result = evaluateOperator(b.type, b.parameters);
                 scriptPC++; blockCompleted = true;
             }
-                // VARIABLES
             else if (b.type == SET_VARIABLE)
             {
                 if (!b.parameters.empty() && !b.variableName.empty())
@@ -2322,7 +2200,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 scriptPC++; blockCompleted = true;
             }
-                // MOTION
             else if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT)
             {
                 if (activeSprite)
@@ -2420,7 +2297,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 scriptPC++; blockCompleted = true;
             }
-                // PEN
             else if (b.type == PEN_ERASE_ALL)
             {
                 penEraseAll(game);
@@ -2461,7 +2337,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 scriptPC++; blockCompleted = true;
             }
-                // SENSING
             else if (b.type == SENSOR_RESET_TIMER)
             {
                 resetTimer(game);
@@ -2502,7 +2377,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 scriptPC++; blockCompleted = true;
             }
-                // LOOKS REPORTERS
             else if (b.type == COSTUME_NUMBER)
             {
                 if (!b.variableName.empty() && activeSprite)
@@ -2594,9 +2468,6 @@ void update(GameState& game, SDL_Renderer* renderer)
 
             Block& b = game.program[scriptPC];
 
-            // ===== بلوک‌های Sensing =====
-
-            // SENSOR_RESET_TIMER
             if (b.type == SENSOR_RESET_TIMER)
             {
                 resetTimer(game);
@@ -2605,21 +2476,19 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // SENSOR_ASK_AND_WAIT
             if (b.type == SENSOR_ASK_AND_WAIT)
             {
                 if (!game.waitingForAnswer)
                 {
                     string question = b.parameters.empty() ? "" : b.parameters[0].asString();
                     askQuestion(game, question);
-                    return; // تا دریافت پاسخ، اجرا متوقف می‌شود
+                    return;
                 }
                 game.lastExecutedBlock = scriptPC;
                 scriptPC++;
                 continue;
             }
 
-            // SET_VARIABLE_TO_SENSOR
             if (b.type == SET_VARIABLE_TO_SENSOR)
             {
                 if (!b.variableName.empty())
@@ -2666,9 +2535,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های کنترلی (کنترل جریان) =====
-
-            // STOP_ALL - توقف همه اسکریپت‌ها
             if (b.type == STOP_ALL)
             {
                 log_info("Stop all scripts");
@@ -2677,7 +2543,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 return;
             }
 
-            // STOP_THIS_SCRIPT - توقف این اسکریپت
             if (b.type == STOP_THIS_SCRIPT)
             {
                 log_info("Stop this script");
@@ -2685,7 +2550,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // WAIT_UNTIL - صبر کن تا شرط درست شود
             if (b.type == WAIT_UNTIL)
             {
                 if (!b.parameters.empty())
@@ -2693,7 +2557,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                     bool condition = b.parameters[0].asBoolean();
                     if (!condition)
                     {
-                        // شرط هنوز درست نشده، در همین خط بمان
                         return;
                     }
                 }
@@ -2702,7 +2565,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // REPEAT_UNTIL - تکرار کن تا شرط درست شود
             if (b.type == REPEAT_UNTIL)
             {
                 if (!b.parameters.empty())
@@ -2710,8 +2572,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                     bool condition = b.parameters[0].asBoolean();
                     if (condition)
                     {
-                        // شرط درست شده، از حلقه خارج شو
-                        // باید به END_REPEAT برویم
                         int endRepeatIndex = -1;
                         for (int i = scriptPC + 1; i < game.program.size(); i++)
                         {
@@ -2736,8 +2596,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // IF_THEN
-// ===== بلوک‌های کنترلی =====
             if (b.type == IF_THEN)
             {
                 bool condition = b.parameters.empty() ? true : b.parameters[0].asBoolean();
@@ -2748,11 +2606,9 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 else
                 {
-                    // شرط نادرست: باید به بعد از END_IF برویم
                     int endIdx = b.endIfIndex;
                     if (endIdx == -1)
                     {
-                        // اگر endIfIndex تنظیم نشده بود، به صورت خطی جستجو کن
                         for (int j = scriptPC + 1; j < game.program.size(); j++)
                         {
                             if (game.program[j].type == END_IF)
@@ -2773,16 +2629,14 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // IF_THEN_ELSE
             if (b.type == IF_THEN_ELSE)
             {
                 bool condition = b.parameters.empty() ? true : b.parameters[0].asBoolean();
 
-                // ذخیره وضعیت در پشته
                 IfStackFrame frame;
                 frame.scriptIndex = s;
                 frame.endIfIndex = b.endIfIndex;
-                frame.inElseBranch = !condition;  // اگر شرط false بود، باید بریم به else
+                frame.inElseBranch = !condition;
 
                 game.ifStack.push(frame);
 
@@ -2793,8 +2647,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 }
                 else
                 {
-                    // شرط نادرست: باید به ELSE برویم
-                    // پیدا کردن ELSE (فعلاً ساده شده)
                     for (int i = scriptPC + 1; i < game.program.size(); i++)
                     {
                         if (game.program[i].type == ELSE)
@@ -2807,7 +2659,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // END_IF
             if (b.type == END_IF)
             {
                 if (!game.ifStack.empty())
@@ -2819,7 +2670,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های کنترلی قبلی (حلقه‌ها) =====
             if (b.type == REPEAT)
             {
                 game.repeatCountStack.push_back(b.repeatCount);
@@ -2892,7 +2742,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 return;
             }
 
-            // ===== بلوک‌های رویداد (Events) =====
             if (b.type == BROADCAST)
             {
                 if (!b.messageName.empty())
@@ -2920,7 +2769,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های ظاهری =====
             if (!activeSprite) continue;
 
             if (b.type == SAY || b.type == SAY_FOR || b.type == THINK || b.type == THINK_FOR)
@@ -2959,7 +2807,7 @@ void update(GameState& game, SDL_Renderer* renderer)
                         activeSprite->message = b.parameters[0].asString();
                         activeSprite->isThinking = (b.type == THINK);
                         game.isShowingMessage = true;
-                        game.messageDuration = 0; // بدون زمان
+                        game.messageDuration = 0;
                     }
                     game.lastExecutedBlock = scriptPC;
                     scriptPC++;
@@ -3003,7 +2851,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                     if (activeSprite->w < 5) activeSprite->w = 5;
                     if (activeSprite->h < 5) activeSprite->h = 5;
 
-                    // محدودیت بالا
                     int maxSize = 500;
                     if (activeSprite->w > maxSize) activeSprite->w = maxSize;
                     if (activeSprite->h > maxSize) activeSprite->h = maxSize;
@@ -3013,10 +2860,8 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // در تابع update، در حلقه اجرای بلوک‌ها
             if (b.type == SET_COMPARISON)
             {
-                // مقدار سمت چپ
                 Value leftVal;
                 if (!b.leftVar.empty())
                 {
@@ -3030,7 +2875,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 else
                     leftVal = Value(0.0);
 
-                // مقدار سمت راست
                 Value rightVal;
                 if (!b.rightVar.empty())
                 {
@@ -3058,7 +2902,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                     case CMP_GREATER_OR_EQUAL: result = (l >= r); break;
                 }
 
-                // ذخیره نتیجه در متغیر
                 if (!b.variableName.empty())
                     game.variables[b.variableName] = Value(result);
                 game.lastExecutedBlock = scriptPC;
@@ -3073,7 +2916,7 @@ void update(GameState& game, SDL_Renderer* renderer)
                     double percent = b.parameters[0].asNumber();
                     int newSize = (int)(percent);
                     if (newSize < 5) newSize = 5;
-                    if (newSize > 500) newSize = 500; // محدودیت بالا
+                    if (newSize > 500) newSize = 500;
                     activeSprite->w = newSize;
                     activeSprite->h = newSize;
                 }
@@ -3082,10 +2925,8 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های لایه =====
             if (b.type == GO_TO_FRONT_LAYER)
             {
-                // پیدا کردن بالاترین لایه
                 int maxLayer = 0;
                 for (const auto& sprite : game.sprites)
                     if (sprite.layer > maxLayer) maxLayer = sprite.layer;
@@ -3098,7 +2939,6 @@ void update(GameState& game, SDL_Renderer* renderer)
 
             if (b.type == GO_TO_BACK_LAYER)
             {
-                // پیدا کردن پایین‌ترین لایه
                 int minLayer = 0;
                 for (const auto& sprite : game.sprites)
                     if (sprite.layer < minLayer) minLayer = sprite.layer;
@@ -3127,7 +2967,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های صدا =====
             if (b.type == PLAY_SOUND || b.type == PLAY_SOUND_UNTIL_DONE)
             {
                 if (b.type == PLAY_SOUND)
@@ -3220,7 +3059,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های عملگر =====
             if (b.type >= OP_ADD && b.type <= OP_XOR)
             {
                 Value result = evaluateOperator(b.type, b.parameters);
@@ -3230,7 +3068,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های متغیر =====
             if (b.type == SET_VARIABLE)
             {
                 if (!b.parameters.empty() && !b.variableName.empty())
@@ -3299,7 +3136,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های حرکتی =====
             if (b.type == MOVE_UP || b.type == MOVE_DOWN || b.type == MOVE_LEFT || b.type == MOVE_RIGHT ||
                 b.type == TURN_RIGHT || b.type == TURN_LEFT || b.type == GOTO_XY || b.type == CHANGE_X ||
                 b.type == CHANGE_Y || b.type == SET_X || b.type == SET_Y || b.type == GOTO_RANDOM || b.type == GOTO_MOUSE)
@@ -3484,7 +3320,6 @@ void update(GameState& game, SDL_Renderer* renderer)
                 continue;
             }
 
-            // ===== بلوک‌های ترسیمی (Pen) =====
             if (b.type == PEN_ERASE_ALL)
             {
                 penEraseAll(game);
@@ -3566,9 +3401,6 @@ void update(GameState& game, SDL_Renderer* renderer)
         }
     }
 
-    // اجرای اسکریپت‌های فعال
-
-    // پاکسازی اسکریپت‌های غیرفعال
     for (int s = game.scriptActive.size() - 1; s >= 0; s--)
     {
         if (!game.scriptActive[s])

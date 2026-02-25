@@ -20,19 +20,14 @@ struct Value
     string stringValue;
     bool boolValue;
 
-    // سازنده پیش‌فرض
     Value() : type(VALUE_NUMBER), numberValue(0), boolValue(false) {}
 
-    // سازنده برای عدد
     Value(double d) : type(VALUE_NUMBER), numberValue(d), boolValue(false) {}
 
-    // سازنده برای رشته
     Value(const string& s) : type(VALUE_STRING), stringValue(s), boolValue(false) {}
 
-    // سازنده برای بولی
     Value(bool b) : type(VALUE_BOOLEAN), boolValue(b), numberValue(0) {}
 
-    // تبدیل به عدد
     double asNumber() const {
         if (type == VALUE_NUMBER)
             return numberValue;
@@ -48,7 +43,6 @@ struct Value
         return 0.0;
     }
 
-    // تبدیل به رشته
     string asString() const {
         if (type == VALUE_STRING)
             return stringValue;
@@ -59,7 +53,6 @@ struct Value
         return "";
     }
 
-    // تبدیل به بولی
     bool asBoolean() const {
         if (type == VALUE_BOOLEAN)
             return boolValue;
