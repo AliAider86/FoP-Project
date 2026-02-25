@@ -67,12 +67,13 @@ struct Sprite
     // فیلدهای جدید برای costume
     vector<string> costumes;    // لیست مسیر فایل‌های costume
     int currentCostume;
+    int layer;
 
     Sprite() :
             x(0), y(0), w(50), h(50), visible(true), direction(0),
             message(""), name(""), isThinking(false), texture(nullptr),
             imagePath(""), index(0), isActive(false),
-            currentCostume(0)  // مقداردهی اولیه
+            currentCostume(0), layer(0)  // مقداردهی اولیه
     {}
 };
 
@@ -103,6 +104,7 @@ struct GameState
     Button uploadBackdropBtn;
     Button prevBackdropBtn;
     Button nextBackdropBtn;
+    Button newProjectBtn;
     bool isPaused;
 
     Button moveCategoryBtn;
@@ -313,6 +315,7 @@ struct GameState
         operatorsCategoryBtn = {0,0,0,0,0};
         variablesCategoryBtn = {0,0,0,0,0};
         penCategoryBtn = {0,0,0,0,0};
+        newProjectBtn = {0,0,0,0,0};
     }
 };
 

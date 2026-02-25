@@ -505,6 +505,47 @@ void initPaletteBlocks(GameState& game)
     setYBlock.paletteId = paletteId++;
     game.paletteBlocks.push_back(setYBlock);
 
+    Block goFrontBlock(GO_TO_FRONT_LAYER, CAT_LOOKS);
+    goFrontBlock.eventName = "go to front layer";
+    goFrontBlock.x = xPos;
+    goFrontBlock.y = startY + 360;  // بعد از set size
+    goFrontBlock.width = blockWidth;
+    goFrontBlock.height = blockHeight;
+    goFrontBlock.paletteId = paletteId++;
+    game.paletteBlocks.push_back(goFrontBlock);
+
+// Go to back layer
+    Block goBackBlock(GO_TO_BACK_LAYER, CAT_LOOKS);
+    goBackBlock.eventName = "go to back layer";
+    goBackBlock.x = xPos;
+    goBackBlock.y = startY + 405;
+    goBackBlock.width = blockWidth;
+    goBackBlock.height = blockHeight;
+    goBackBlock.paletteId = paletteId++;
+    game.paletteBlocks.push_back(goBackBlock);
+
+// Go forward layers
+    Block goForwardBlock(GO_FORWARD_LAYERS, CAT_LOOKS);
+    goForwardBlock.eventName = "go forward 1 layers";
+    goForwardBlock.parameters.push_back(Value(1.0));
+    goForwardBlock.x = xPos;
+    goForwardBlock.y = startY + 450;
+    goForwardBlock.width = blockWidth;
+    goForwardBlock.height = blockHeight;
+    goForwardBlock.paletteId = paletteId++;
+    game.paletteBlocks.push_back(goForwardBlock);
+
+// Go backward layers
+    Block goBackwardBlock(GO_BACKWARD_LAYERS, CAT_LOOKS);
+    goBackwardBlock.eventName = "go backward 1 layers";
+    goBackwardBlock.parameters.push_back(Value(1.0));
+    goBackwardBlock.x = xPos;
+    goBackwardBlock.y = startY + 495;
+    goBackwardBlock.width = blockWidth;
+    goBackwardBlock.height = blockHeight;
+    goBackwardBlock.paletteId = paletteId++;
+    game.paletteBlocks.push_back(goBackwardBlock);
+
     // ===== بلوک‌های ظاهری (نیلی) - CAT_LOOKS =====
     startY = 110;
 
@@ -3037,6 +3078,51 @@ void update(GameState& game, SDL_Renderer* renderer)
                     activeSprite->h = newSize;
                 }
                 game.lastExecutedBlock = scriptPC;
+                scriptPC++;
+                continue;
+            }
+
+            // ===== بلوک‌های لایه =====
+            if (b.type == GO_TO_FRONT_LAYER)
+            {
+                // پیدا کردن بالاترین لایه
+                int maxLayer = 0;
+                for (const auto& sprite : game.sprites)
+                    if (sprite.layer > maxLayer) maxLayer = sprite.layer;
+
+                activeSprite->layer = maxLayer + 1;
+                log_info(("Sprite moved to front layer: " + to_string(activeSprite->layer)).c_str());
+                scriptPC++;
+                continue;
+            }
+
+            if (b.type == GO_TO_BACK_LAYER)
+            {
+                // پیدا کردن پایین‌ترین لایه
+                int minLayer = 0;
+                for (const auto& sprite : game.sprites)
+                    if (sprite.layer < minLayer) minLayer = sprite.layer;
+
+                activeSprite->layer = minLayer - 1;
+                log_info(("Sprite moved to back layer: " + to_string(activeSprite->layer)).c_str());
+                scriptPC++;
+                continue;
+            }
+
+            if (b.type == GO_FORWARD_LAYERS)
+            {
+                int steps = b.parameters.empty() ? 1 : (int)b.parameters[0].asNumber();
+                activeSprite->layer += steps;
+                log_info(("Sprite moved forward " + to_string(steps) + " layers").c_str());
+                scriptPC++;
+                continue;
+            }
+
+            if (b.type == GO_BACKWARD_LAYERS)
+            {
+                int steps = b.parameters.empty() ? 1 : (int)b.parameters[0].asNumber();
+                activeSprite->layer -= steps;
+                log_info(("Sprite moved backward " + to_string(steps) + " layers").c_str());
                 scriptPC++;
                 continue;
             }

@@ -14,6 +14,54 @@ using namespace std;
 // اعلان توابع خارجی
 extern bool loadSpriteTexture(Sprite* sprite, SDL_Renderer* renderer, const char* path);
 extern void renderText(SDL_Renderer* renderer, const char* text, int x, int y, SDL_Color color);
+extern void addDefaultSprite(GameState& game, SDL_Renderer* renderer, const char* name, const char* imagePath);
+
+void resetToNewProject(GameState& game, SDL_Renderer* renderer)
+{
+    // حذف همه اسپرایت‌ها
+    for (auto& s : game.sprites)
+        if (s.texture) SDL_DestroyTexture(s.texture);
+    game.sprites.clear();
+
+    // پاک کردن بلوک‌ها و متغیرها
+    game.program.clear();
+    game.variables.clear();
+    game.scriptStartIndices.clear();
+    game.scriptActive.clear();
+    game.scriptCurrentBlock.clear();
+    game.repeatCountStack.clear();
+    game.repeatStartStack.clear();
+    while (!game.ifStack.empty()) game.ifStack.pop();
+    game.messageHandlers.clear();
+
+    // ریست وضعیت‌ها
+    game.waitingForBroadcast = false;
+    game.waitingScriptIndex = -1;
+    game.waitingForAnswer = false;
+    game.answer = "";
+    game.currentQuestion = "";
+    game.isRunningCode = false;
+    game.isPaused = false;
+    game.stepMode = false;
+    game.currentBlockIndex = 0;
+    game.isExecutingBlock = false;
+    game.remainingMove = 0;
+    game.isWaiting = false;
+    game.isShowingMessage = false;
+
+    // افزودن اسپرایت پیش‌فرض
+    addDefaultSprite(game, renderer, "Sprite1", "cat.png");
+    if (game.sprites.size() > 0)
+    {
+        game.activeSpriteIndex = 0;
+        game.sprites[0].isActive = true;
+    }
+
+    // ریست پس‌زمینه به اولین
+    game.currentBackdrop = 0;
+
+    log_info("New project created");
+}
 
 // ==================== مدیریت رویدادها ====================
 void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
@@ -186,6 +234,16 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                             {
                                 b.parameters[0] = Value(b.editingBuffer);
                                 b.eventName = (b.type == SAY ? "say " : "think ") + b.parameters[0].asString();
+                            }
+                            else if ((b.type == GO_FORWARD_LAYERS || b.type == GO_BACKWARD_LAYERS) && !b.parameters.empty())
+                            {
+                                int newVal = stoi(b.editingBuffer);
+                                if (newVal < 0) newVal = 0;
+                                b.parameters[0] = Value((double)newVal);
+                                if (b.type == GO_FORWARD_LAYERS)
+                                    b.eventName = "go forward " + to_string(newVal) + " layers";
+                                else
+                                    b.eventName = "go backward " + to_string(newVal) + " layers";
                             }
                                 // ===== بلوک GOTO_XY =====
                             else if (b.type == GOTO_XY && b.parameters.size() >= 2)
@@ -512,6 +570,14 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                         // ویرایش messageName (فیلد متنی)
                         b.editingBuffer += e.text.text;
                     }
+                    else if (b.type == GO_FORWARD_LAYERS || b.type == GO_BACKWARD_LAYERS)
+                    {
+                        for (char c : string(e.text.text))
+                        {
+                            if (c >= '0' && c <= '9')
+                                b.editingBuffer += c;
+                        }
+                    }
                     else if (b.type == REPEAT || b.type == IF_THEN || b.type == IF_THEN_ELSE || b.type == WAIT_UNTIL || b.type == REPEAT_UNTIL)
                     {
                         // این بلوک‌ها عددی/بولی هستند
@@ -769,6 +835,16 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                             else
                                 block.editingBuffer = "true";
                             log_info(("Editing condition: " + block.editingBuffer).c_str());
+                        }
+                        else if (block.type == GO_FORWARD_LAYERS || block.type == GO_BACKWARD_LAYERS)
+                        {
+                            block.editingMode = true;
+                            block.editingField = 0;
+                            if (!block.parameters.empty())
+                                block.editingBuffer = to_string((int)block.parameters[0].asNumber());
+                            else
+                                block.editingBuffer = "1";
+                            log_info(("Editing layers count: " + block.editingBuffer).c_str());
                         }
                         else if (block.type == COSTUME_NUMBER || block.type == SPRITE_SIZE || block.type == BACKDROP_NUMBER)
                         {
@@ -1274,6 +1350,34 @@ void handleEvents(bool &running, GameState& game, SDL_Renderer* renderer)
                 }
             }
 
+            // ===== دکمه New Project در نوار منو =====
+            if (e.button.button == SDL_BUTTON_LEFT &&
+                mx >= game.newProjectBtn.x && mx <= game.newProjectBtn.x + game.newProjectBtn.w &&
+                my >= game.newProjectBtn.y && my <= game.newProjectBtn.y + game.newProjectBtn.h)
+            {
+                game.newProjectBtn.isPressed = true;
+
+                int result = MessageBox(NULL,
+                                        "Do you want to save the current project?",
+                                        "New Project",
+                                        MB_YESNO | MB_ICONQUESTION);
+
+                if (result == IDYES)
+                {
+                    std::string filename = showSaveFileDialog();
+                    if (!filename.empty())
+                    {
+                        saveProject(game, filename);
+                        log_info(("Project saved before new: " + filename).c_str());
+                    }
+                }
+
+                // فراخوانی تابع ریست (که باید در ui.cpp یا engine.cpp تعریف شود)
+                resetToNewProject(game, renderer);
+
+                log_info("New project button clicked");
+            }
+
             // ===== دکمه‌های مدیریت اسپرایت =====
             int spriteBtnStartX = game.screenWidth - 350;
 
@@ -1653,6 +1757,28 @@ void render(SDL_Renderer* renderer, GameState& game)
         filledCircleRGBA(renderer, 40, 30, 20, 255, 255, 255, 255);
     }
     renderText(renderer, "Sharif University of Technology", 70, 20, white);
+    int textWidth = 200; // تخمینی
+    int btnX = 70 + textWidth + 20; // 70 موقعیت متن + عرض متن + فاصله
+    int btnY = 15;
+    int btnW = 60;
+    int btnH = 30;
+
+// ذخیره مختصات در GameState برای تشخیص کلیک
+    game.newProjectBtn.x = btnX;
+    game.newProjectBtn.y = btnY;
+    game.newProjectBtn.w = btnW;
+    game.newProjectBtn.h = btnH;
+
+// رسم دکمه
+    if (game.newProjectBtn.isPressed)
+        SDL_SetRenderDrawColor(renderer, 100, 100, 200, 255);
+    else
+        SDL_SetRenderDrawColor(renderer, 150, 150, 255, 255);
+    SDL_Rect newRect = {btnX, btnY, btnW, btnH};
+    SDL_RenderFillRect(renderer, &newRect);
+    SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+    SDL_RenderDrawRect(renderer, &newRect);
+    renderText(renderer, "New", btnX + 15, btnY + 8, white);
 
     if (game.isRunningCode)
         filledCircleRGBA(renderer, game.screenWidth - 100, 30, 15, 0, 255, 0, 255);
@@ -1965,9 +2091,17 @@ void render(SDL_Renderer* renderer, GameState& game)
         filledCircleRGBA(renderer, stageX, stageY, p.size, p.r, p.g, p.b, p.a);
     }
 
+    vector<int> spriteIndices(game.sprites.size());
+    for (int i = 0; i < game.sprites.size(); i++) spriteIndices[i] = i;
+
+// مرتب‌سازی بر اساس layer (صعودی)
+    sort(spriteIndices.begin(), spriteIndices.end(),
+         [&](int a, int b) { return game.sprites[a].layer < game.sprites[b].layer; });
+
     // رسم اسپرایت‌ها
-    for (auto& sprite : game.sprites)
+    for (int idx : spriteIndices)
     {
+        Sprite& sprite = game.sprites[idx];
         if (!sprite.visible) continue;
 
         int spriteStageX = stage.x + (int)((sprite.x / game.screenWidth) * stage.w);
